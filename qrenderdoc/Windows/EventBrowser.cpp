@@ -1162,6 +1162,8 @@ private:
       }
     }
 
+    bool forceHTML = false;
+
     if(name.isEmpty())
     {
       for(const APIEvent &e : action->events)
@@ -1218,10 +1220,7 @@ private:
       if(name.isEmpty())
         qCritical() << "Couldn't find APIEvent for" << eid;
 
-      // force html even for events that don't reference resources etc, to get the italics for
-      // parameters
-      if(m_ShowParameterNames)
-        name = lit("<rdhtml>") + name + lit("</rdhtml>");
+      forceHTML = m_ShowParameterNames;
     }
 
     if(m_MessageCounts.contains(eid))
@@ -1230,6 +1229,11 @@ private:
       if(count > 0)
         name += lit(" __rd_msgs::%1:%2").arg(eid).arg(count);
     }
+
+    // force html even for events that don't reference resources etc, to get the italics for
+    // parameters
+    if(forceHTML)
+      name = lit("<rdhtml>") + name + lit("</rdhtml>");
 
     QVariant v = name;
 
@@ -1338,22 +1342,6 @@ bool EvaluateFilterSet(ICaptureContext &ctx, const rdcarray<EventFilter> &filter
   // if we didn't early out with a can't/must failure, then return the result from whatever normal
   // matches we got
   return accept;
-}
-
-static const SDObject *FindChildRecursively(const SDObject *parent, rdcstr name)
-{
-  const SDObject *o = parent->FindChild(name);
-  if(o)
-    return o;
-
-  for(size_t i = 0; i < parent->NumChildren(); i++)
-  {
-    o = FindChildRecursively(parent->GetChild(i), name);
-    if(o)
-      return o;
-  }
-
-  return NULL;
 }
 
 struct ParseTrace
@@ -1783,7 +1771,7 @@ searched for as a case-insensitive substring.
       if(!chunk)
         return false;
 
-      const SDObject *o = FindChildRecursively(chunk, paramName);
+      const SDObject *o = chunk->FindChildRecursively(paramName);
 
       if(!o)
         return false;
