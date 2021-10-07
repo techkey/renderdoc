@@ -665,6 +665,8 @@ struct GLDispatchTable
 
   // OVR_multiview
   PFNGLFRAMEBUFFERTEXTUREMULTIVIEWOVRPROC glFramebufferTextureMultiviewOVR;
+  // techkey added
+  PFNGLNAMEDFRAMEBUFFERTEXTUREMULTIVIEWOVRPROC glNamedFramebufferTextureMultiviewOVR;
 
   // OVR_multiview_multisampled_render_to_texture
   PFNGLFRAMEBUFFERTEXTUREMULTISAMPLEMULTIVIEWOVRPROC glFramebufferTextureMultisampleMultiviewOVR;

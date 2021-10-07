@@ -260,6 +260,14 @@ void WrappedOpenGL::BuildGLExtensions()
   m_GLExtensions.push_back("GL_KHR_robustness");
   m_GLExtensions.push_back("GL_KHR_robust_buffer_access_behavior");
 
+  // techkey added - working
+  m_GLExtensions.push_back("GL_NV_viewport_array2");
+  m_GLExtensions.push_back("GL_NV_stereo_view_rendering");
+
+  // techkey added
+  m_GLExtensions.push_back("GL_OVR_multiview");
+  m_GLExtensions.push_back("GL_OVR_multiview2");
+
   // this WGL extension is advertised in the gl ext string instead of via the wgl ext string,
   // return it just in case anyone is checking for it via this place. On non-windows platforms
   // it won't be reported as we do the intersection of renderdoc supported extensions and
@@ -3953,8 +3961,12 @@ bool WrappedOpenGL::ProcessChunk(ReadSerialiser &ser, GLChunk chunk)
     case GLChunk::glNamedFramebufferTextureLayer:
     case GLChunk::glNamedFramebufferTextureLayerEXT:
       return Serialise_glNamedFramebufferTextureLayerEXT(ser, 0, eGL_NONE, 0, 0, 0);
+
     case GLChunk::glFramebufferTextureMultiviewOVR:
       return Serialise_glFramebufferTextureMultiviewOVR(ser, eGL_NONE, eGL_NONE, 0, 0, 0, 0);
+    // techkey added
+    case GLChunk::glNamedFramebufferTextureMultiviewOVR:
+      return Serialise_glNamedFramebufferTextureMultiviewOVR(ser, eGL_NONE, eGL_NONE, 0, 0, 0, 0);
     case GLChunk::glFramebufferTextureMultisampleMultiviewOVR:
       return Serialise_glFramebufferTextureMultisampleMultiviewOVR(ser, eGL_NONE, eGL_NONE, 0, 0, 0,
                                                                    0, 0);

@@ -1895,6 +1895,8 @@ enum class GLChunk : uint32_t
   glFrameTerminatorGREMEDY,
   glStringMarkerGREMEDY,
   glFramebufferTextureMultiviewOVR,
+  // techkey added
+  glNamedFramebufferTextureMultiviewOVR,
   glFramebufferTextureMultisampleMultiviewOVR,
   glCompressedTextureImage1DEXT,
   glCompressedTextureImage2DEXT,

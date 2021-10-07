@@ -1008,6 +1008,7 @@
   FUNC(glFrameTerminatorGREMEDY, glFrameTerminatorGREMEDY); \
   FUNC(glStringMarkerGREMEDY, glStringMarkerGREMEDY); \
   FUNC(glFramebufferTextureMultiviewOVR, glFramebufferTextureMultiviewOVR); \
+  FUNC(glNamedFramebufferTextureMultiviewOVR, glNamedFramebufferTextureMultiviewOVR); \
   FUNC(glFramebufferTextureMultisampleMultiviewOVR, glFramebufferTextureMultisampleMultiviewOVR); \
   FUNC(glTextureFoveationParametersQCOM, glTextureFoveationParametersQCOM); \
   FUNC(glMaxShaderCompilerThreadsKHR, glMaxShaderCompilerThreadsKHR); \
@@ -2269,6 +2270,7 @@
   FuncWrapper0(void, glFrameTerminatorGREMEDY); \
   FuncWrapper2(void, glStringMarkerGREMEDY, GLsizei, len, const void *, string); \
   FuncWrapper6(void, glFramebufferTextureMultiviewOVR, GLenum, target, GLenum, attachment, GLuint, texture, GLint, level, GLint, baseViewIndex, GLsizei, numViews); \
+  FuncWrapper6(void, glNamedFramebufferTextureMultiviewOVR, GLuint, framebuffer, GLenum, attachment, GLuint, texture, GLint, level, GLint, baseViewIndex, GLsizei, numViews); \
   FuncWrapper7(void, glFramebufferTextureMultisampleMultiviewOVR, GLenum, target, GLenum, attachment, GLuint, texture, GLint, level, GLsizei, samples, GLint, baseViewIndex, GLsizei, numViews); \
   FuncWrapper8(void, glTextureFoveationParametersQCOM, GLuint, texture, GLuint, layer, GLuint, focalPoint, GLfloat, focalX, GLfloat, focalY, GLfloat, gainX, GLfloat, gainY, GLfloat, foveaArea); \
   FuncWrapper1(void, glMaxShaderCompilerThreadsKHR, GLuint, count); \

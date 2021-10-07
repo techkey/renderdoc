@@ -1021,6 +1021,10 @@ public:
   IMPLEMENT_FUNCTION_SERIALISED(void, glFramebufferTextureMultiviewOVR, GLenum target,
                                 GLenum attachment, GLuint texture, GLint level, GLint baseViewIndex,
                                 GLsizei numViews);
+  // techkey added
+  IMPLEMENT_FUNCTION_SERIALISED(void, glNamedFramebufferTextureMultiviewOVR, GLuint framebuffer,
+                                GLenum attachment, GLuint texture, GLint level, GLint baseViewIndex,
+                                GLsizei numViews);
   IMPLEMENT_FUNCTION_SERIALISED(void, glFramebufferTextureMultisampleMultiviewOVR, GLenum target,
                                 GLenum attachment, GLuint texture, GLint level, GLsizei samples,
                                 GLint baseViewIndex, GLsizei numViews);

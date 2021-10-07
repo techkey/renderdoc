@@ -1268,6 +1268,133 @@ void WrappedOpenGL::glFramebufferTextureMultiviewOVR(GLenum target, GLenum attac
   }
 }
 
+// techkey added
+template <typename SerialiserType>
+bool WrappedOpenGL::Serialise_glNamedFramebufferTextureMultiviewOVR(SerialiserType &ser, GLuint framebufferHandle,
+                                                               GLenum attachment,
+                                                               GLuint textureHandle, GLint level,
+                                                               GLint baseViewIndex, GLsizei numViews)
+{
+  //SERIALISE_ELEMENT(target);
+  SERIALISE_ELEMENT_LOCAL(framebuffer, FramebufferRes(GetCtx(), framebufferHandle));
+  SERIALISE_ELEMENT(attachment);
+  SERIALISE_ELEMENT_LOCAL(texture, TextureRes(GetCtx(), textureHandle));
+  SERIALISE_ELEMENT(level);
+  SERIALISE_ELEMENT(baseViewIndex);
+  SERIALISE_ELEMENT(numViews);
+
+  SERIALISE_CHECK_READ_ERRORS();
+
+  if(IsReplayingAndReading())
+  {
+    CheckReplayFunctionPresent(glNamedFramebufferTextureMultiviewOVR);
+
+    GL.glNamedFramebufferTextureMultiviewOVR(framebuffer.name, attachment, texture.name, level, baseViewIndex,
+                                        numViews);
+
+    if(IsLoading(m_State) && texture.name)
+    {
+      if(attachment == eGL_DEPTH_ATTACHMENT || attachment == eGL_DEPTH_STENCIL_ATTACHMENT)
+        m_Textures[GetResourceManager()->GetResID(texture)].creationFlags |=
+            TextureCategory::DepthTarget;
+      else
+        m_Textures[GetResourceManager()->GetResID(texture)].creationFlags |=
+            TextureCategory::ColorTarget;
+    }
+
+    //{
+    //  GLuint fbo = 0;
+    //  GL.glGetIntegerv(FramebufferBinding(target), (GLint *)&fbo);
+    //  AddResourceInitChunk(FramebufferRes(GetCtx(), fbo));
+    //}
+    AddResourceInitChunk(framebuffer);
+  }
+
+  return true;
+}
+
+// techkey added
+void WrappedOpenGL::glNamedFramebufferTextureMultiviewOVR(GLuint framebuffer, GLenum attachment,
+                                                     GLuint texture, GLint level,
+                                                     GLint baseViewIndex, GLsizei numViews)
+{
+  SERIALISE_TIME_CALL(GL.glNamedFramebufferTextureMultiviewOVR(framebuffer, attachment, texture, level,
+                                                          baseViewIndex, numViews));
+
+  if(IsCaptureMode(m_State))
+  {
+    //GLResourceRecord *record = m_DeviceRecord;
+    //
+    //if(target == eGL_DRAW_FRAMEBUFFER || target == eGL_FRAMEBUFFER)
+    //{
+    //  if(GetCtxData().m_DrawFramebufferRecord)
+    //    record = GetCtxData().m_DrawFramebufferRecord;
+    //}
+    //else
+    //{
+    //  if(GetCtxData().m_ReadFramebufferRecord)
+    //    record = GetCtxData().m_ReadFramebufferRecord;
+    //}
+
+    GLResourceRecord *record =
+        GetResourceManager()->GetResourceRecord(FramebufferRes(GetCtx(), framebuffer));
+
+    record->age++;
+
+    if(texture != 0 && GetResourceManager()->HasResourceRecord(TextureRes(GetCtx(), texture)))
+    {
+      GetResourceManager()->MarkDirtyResource(TextureRes(GetCtx(), texture));
+    }
+
+    if(m_HighTrafficResources.find(record->GetResourceID()) != m_HighTrafficResources.end() &&
+       IsBackgroundCapturing(m_State))
+      return;
+
+    // because there's no DSA variant of the OVR framebuffer functions we must ensure that while
+    // background capturing the correct framebuffer is bound. Normally we don't serialise
+    // glBindFramebuffer calls.
+    //if(IsBackgroundCapturing(m_State))
+    //{
+    //  USE_SCRATCH_SERIALISER();
+    //  SCOPED_SERIALISE_CHUNK(GLChunk::glBindFramebuffer);
+    //  Serialise_glBindFramebuffer(ser, target, record->Resource.name);
+    //
+    //  record->AddChunk(scope.Get());
+    //}
+
+    USE_SCRATCH_SERIALISER();
+    SCOPED_SERIALISE_CHUNK(gl_CurChunk);
+    Serialise_glNamedFramebufferTextureMultiviewOVR(ser, framebuffer, attachment, texture, level,
+                                               baseViewIndex, numViews);
+
+    if(IsBackgroundCapturing(m_State))
+    {
+      record->AddChunk(scope.Get());
+      record->UpdateCount++;
+
+      GetResourceManager()->MarkFBOReferenced(record->Resource, eFrameRef_ReadBeforeWrite);
+
+      //if(record != m_DeviceRecord)
+      {
+        //record->UpdateCount++;
+
+        if(record->UpdateCount > 10)
+        {
+          m_HighTrafficResources.insert(record->GetResourceID());
+          GetResourceManager()->MarkDirtyResource(record->GetResourceID());
+        }
+      }
+    }
+    else
+    {
+      GetContextRecord()->AddChunk(scope.Get());
+      GetResourceManager()->MarkFBOReferenced(record->Resource, eFrameRef_ReadBeforeWrite);
+      GetResourceManager()->MarkResourceFrameReferenced(TextureRes(GetCtx(), texture),
+                                                        eFrameRef_Read);
+    }
+  }
+}
+
 template <typename SerialiserType>
 bool WrappedOpenGL::Serialise_glFramebufferTextureMultisampleMultiviewOVR(
     SerialiserType &ser, GLenum target, GLenum attachment, GLuint textureHandle, GLint level,
@@ -3181,6 +3308,10 @@ INSTANTIATE_FUNCTION_SERIALISED(void, glNamedFramebufferRenderbufferEXT, GLuint 
 INSTANTIATE_FUNCTION_SERIALISED(void, glNamedFramebufferTextureLayerEXT, GLuint framebufferHandle,
                                 GLenum attachment, GLuint textureHandle, GLint level, GLint layer);
 INSTANTIATE_FUNCTION_SERIALISED(void, glFramebufferTextureMultiviewOVR, GLenum target,
+                                GLenum attachment, GLuint textureHandle, GLint level,
+                                GLint baseViewIndex, GLsizei numViews);
+// techkey added
+INSTANTIATE_FUNCTION_SERIALISED(void, glNamedFramebufferTextureMultiviewOVR, GLuint framebufferHandle,
                                 GLenum attachment, GLuint textureHandle, GLint level,
                                 GLint baseViewIndex, GLsizei numViews);
 INSTANTIATE_FUNCTION_SERIALISED(void, glFramebufferTextureMultisampleMultiviewOVR, GLenum target,
