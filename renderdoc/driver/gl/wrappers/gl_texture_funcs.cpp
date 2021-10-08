@@ -3314,6 +3314,114 @@ void WrappedOpenGL::glMultiTexImage3DEXT(GLenum texunit, GLenum target, GLint le
 }
 
 template <typename SerialiserType>
+bool WrappedOpenGL::Serialise_glTextureImage2DMultisampleNV(SerialiserType &ser, GLuint textureHandle,
+                                                            GLenum target, GLsizei samples,
+                                                            GLint internalformat, GLsizei width,
+                                                            GLsizei height,
+                                                            GLboolean fixedsamplelocations)
+{
+  SERIALISE_ELEMENT_LOCAL(texture, TextureRes(GetCtx(), textureHandle)).Important();
+  SERIALISE_ELEMENT(target).Important();
+  HIDE_ARB_DSA_TARGET();
+  SERIALISE_ELEMENT(samples).Important();
+  SERIALISE_ELEMENT_TYPED(GLenum, internalformat).Important();
+  SERIALISE_ELEMENT(width).Important();
+  SERIALISE_ELEMENT(height).Important();
+  SERIALISE_ELEMENT_TYPED(bool, fixedsamplelocations);
+
+  SERIALISE_CHECK_READ_ERRORS();
+
+  if(IsReplayingAndReading())
+  {
+    GLenum intFmt = (GLenum)internalformat;
+    GLenum dummy = eGL_NONE;
+    bool emulated = EmulateLuminanceFormat(texture.name, target, intFmt, dummy);
+
+    intFmt = GetSizedFormat(intFmt);
+
+    ResourceId liveId = GetResourceManager()->GetResID(texture);
+    m_Textures[liveId].width = width;
+    m_Textures[liveId].height = height;
+    m_Textures[liveId].depth = 1;
+    m_Textures[liveId].samples = samples;
+    if(target != eGL_NONE)
+      m_Textures[liveId].curType = TextureTarget(target);
+    m_Textures[liveId].dimension = 2;
+    m_Textures[liveId].internalFormat = intFmt;
+    m_Textures[liveId].emulated = emulated;
+    m_Textures[liveId].mipsValid = 1;
+
+    // if(target != eGL_NONE)
+    GL.glTextureImage2DMultisampleNV(texture.name, target, samples, (GLint)intFmt, width, height,
+                                     fixedsamplelocations);
+    // else
+    //  GL.glTextureImage3DMultisample(texture.name, samples, internalformat, width, height, depth,
+    //                                   fixedsamplelocations);
+
+    AddResourceInitChunk(texture);
+  }
+
+  return true;
+}
+
+void WrappedOpenGL::Common_glTextureImage2DMultisampleNV(ResourceId texId, GLenum target,
+                                                         GLsizei samples, GLint internalformat,
+                                                         GLsizei width, GLsizei height,
+                                                         GLboolean fixedsamplelocations)
+{
+  if(texId == ResourceId())
+    return;
+
+  // proxy formats are used for querying texture capabilities, don't serialise these
+  if(IsProxyTarget(target) || internalformat == 0)
+    return;
+
+  if(IsCaptureMode(m_State))
+  {
+    GLResourceRecord *record = GetResourceManager()->GetResourceRecord(texId);
+    RDCASSERT(record);
+
+    USE_SCRATCH_SERIALISER();
+    SCOPED_SERIALISE_CHUNK(gl_CurChunk);
+    Serialise_glTextureImage2DMultisampleNV(ser, record->Resource.name, target, samples,
+                                            internalformat, width, height,
+                                            fixedsamplelocations);
+
+    record->AddChunk(scope.Get());
+
+    // illegal to re-type textures
+    record->VerifyDataType(target);
+  }
+
+  {
+    m_Textures[texId].width = width;
+    m_Textures[texId].height = height;
+    m_Textures[texId].depth = 1;
+    m_Textures[texId].samples = samples;
+    if(target != eGL_NONE)
+      m_Textures[texId].curType = TextureTarget(target);
+    else
+      m_Textures[texId].curType =
+          TextureTarget(GetResourceManager()->GetResourceRecord(texId)->datatype);
+    m_Textures[texId].dimension = 3;
+    m_Textures[texId].internalFormat = (GLenum)internalformat;
+    m_Textures[texId].mipsValid = 1;
+  }
+}
+
+void WrappedOpenGL::glTextureImage2DMultisampleNV(GLuint texture, GLenum target, GLsizei samples,
+                                                  GLint internalformat, GLsizei width, GLsizei height,
+                                                  GLboolean fixedsamplelocations)
+{
+  SERIALISE_TIME_CALL(GL.glTextureImage2DMultisampleNV(texture, target, samples, internalformat,
+                                                       width, height, fixedsamplelocations));
+
+  Common_glTextureImage2DMultisampleNV(GetResourceManager()->GetResID(TextureRes(GetCtx(), texture)),
+                                       target, samples, internalformat, width, height,
+                                       fixedsamplelocations);
+}
+
+template <typename SerialiserType>
 bool WrappedOpenGL::Serialise_glTextureImage3DMultisampleNV(SerialiserType &ser, 
                                                             GLuint textureHandle, GLenum target, 
                                                             GLsizei samples, 
@@ -4973,7 +5081,7 @@ bool WrappedOpenGL::Serialise_glTextureStorage2DMultisampleEXT(SerialiserType &s
   SERIALISE_ELEMENT(target).Important();
   HIDE_ARB_DSA_TARGET();
   SERIALISE_ELEMENT(samples).Important();
-  SERIALISE_ELEMENT(internalformat).Important();
+  SERIALISE_ELEMENT_TYPED(GLenum, internalformat).Important();
   SERIALISE_ELEMENT(width).Important();
   SERIALISE_ELEMENT(height).Important();
   SERIALISE_ELEMENT_TYPED(bool, fixedsamplelocations);
@@ -7220,6 +7328,9 @@ INSTANTIATE_FUNCTION_SERIALISED(void, glTextureImage2DEXT, GLuint texture, GLenu
 INSTANTIATE_FUNCTION_SERIALISED(void, glTextureImage3DEXT, GLuint texture, GLenum target, GLint level,
                                 GLint internalformat, GLsizei width, GLsizei height, GLsizei depth,
                                 GLint border, GLenum format, GLenum type, const void *pixels);
+INSTANTIATE_FUNCTION_SERIALISED(void, glTextureImage2DMultisampleNV, GLuint texture, GLenum target, GLsizei samples,
+                                GLint internalformat, GLsizei width, GLsizei height,
+                                GLboolean fixedSampleLocations);
 INSTANTIATE_FUNCTION_SERIALISED(void, glTextureImage3DMultisampleNV, GLuint texture, GLenum target, GLsizei samples,
                                 GLint internalformat, GLsizei width, GLsizei height, GLsizei depth,
                                 GLboolean fixedSampleLocations);

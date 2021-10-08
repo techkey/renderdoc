@@ -1947,6 +1947,9 @@ public:
   void Common_glTextureImage3DEXT(ResourceId id, GLenum target, GLint level, GLint internalformat,
                                   GLsizei width, GLsizei height, GLsizei depth, GLint border,
                                   GLenum format, GLenum type, const void *pixels);
+  void Common_glTextureImage2DMultisampleNV(ResourceId id, GLenum target, GLsizei samples,
+                                            GLint internalformat, GLsizei width, GLsizei height, 
+                                            GLboolean fixedsamplelocations);
   void Common_glTextureImage3DMultisampleNV(ResourceId id, GLenum target, GLsizei samples,
                                             GLint internalformat, GLsizei width, GLsizei height, 
                                             GLsizei depth, GLboolean fixedsamplelocations);
@@ -2245,6 +2248,9 @@ public:
   IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage3DEXT, GLuint texture, GLenum target, GLint level,
                                 GLint internalformat, GLsizei width, GLsizei height, GLsizei depth,
                                 GLint border, GLenum format, GLenum type, const void *pixels);
+  IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage2DMultisampleNV, GLuint texture, GLenum target, GLint level,
+                                GLint internalformat, GLsizei width, GLsizei height,
+                                GLboolean fixedsamplelocations);
   IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage3DMultisampleNV, GLuint texture, GLenum target, GLint level,
                                 GLint internalformat, GLsizei width, GLsizei height, GLsizei depth,
                                 GLboolean fixedsamplelocations);
