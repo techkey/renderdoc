@@ -1947,6 +1947,9 @@ public:
   void Common_glTextureImage3DEXT(ResourceId id, GLenum target, GLint level, GLint internalformat,
                                   GLsizei width, GLsizei height, GLsizei depth, GLint border,
                                   GLenum format, GLenum type, const void *pixels);
+  void Common_glTextureImage3DMultisampleNV(ResourceId id, GLenum target, GLsizei samples,
+                                            GLint internalformat, GLsizei width, GLsizei height, 
+                                            GLsizei depth, GLboolean fixedsamplelocations);
   void Common_glCompressedTextureImage1DEXT(ResourceId id, GLenum target, GLint level,
                                             GLenum internalformat, GLsizei width, GLint border,
                                             GLsizei imageSize, const void *bits);
@@ -2242,6 +2245,9 @@ public:
   IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage3DEXT, GLuint texture, GLenum target, GLint level,
                                 GLint internalformat, GLsizei width, GLsizei height, GLsizei depth,
                                 GLint border, GLenum format, GLenum type, const void *pixels);
+  IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage3DMultisampleNV, GLuint texture, GLenum target, GLint level,
+                                GLint internalformat, GLsizei width, GLsizei height, GLsizei depth,
+                                GLboolean fixedsamplelocations);
   IMPLEMENT_FUNCTION_SERIALISED(void, glTextureParameterfEXT, GLuint texture, GLenum target,
                                 GLenum pname, GLfloat param);
   IMPLEMENT_FUNCTION_SERIALISED(void, glTextureParameterfvEXT, GLuint texture, GLenum target,
@@ -2554,6 +2560,11 @@ public:
   IMPLEMENT_FUNCTION_SERIALISED(void, glGetPerfQueryInfoINTEL, GLuint queryId,
                                 GLuint queryNameLength, GLchar *queryName, GLuint *dataSize,
                                 GLuint *noCounters, GLuint *noInstances, GLuint *capsMask);
+
+  // NV
+  IMPLEMENT_FUNCTION_SERIALISED(void, glDrawTextureNV, GLuint texture, GLuint sampler, 
+                                GLfloat x0, GLfloat y0, GLfloat x1, GLfloat y1, GLfloat z, 
+                                GLfloat s0, GLfloat t0, GLfloat s1, GLfloat t1);
 };
 
 class ScopedDebugContext

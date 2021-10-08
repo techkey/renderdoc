@@ -4832,6 +4832,49 @@ void WrappedOpenGL::glClearTexSubImage(GLuint texture, GLint level, GLint xoffse
 }
 
 template <typename SerialiserType>
+bool WrappedOpenGL::Serialise_glDrawTextureNV(SerialiserType &ser, GLuint textureHandle, GLuint samplerHandle,
+                                              GLfloat x0, GLfloat y0, GLfloat x1, GLfloat y1, GLfloat z, 
+                                              GLfloat s0, GLfloat t0, GLfloat s1, GLfloat t1)
+{
+  SERIALISE_ELEMENT_LOCAL(texture, TextureRes(GetCtx(), textureHandle));
+  SERIALISE_ELEMENT_LOCAL(sampler, SamplerRes(GetCtx(), samplerHandle));
+  SERIALISE_ELEMENT(x0);
+  SERIALISE_ELEMENT(y0);
+  SERIALISE_ELEMENT(x1);
+  SERIALISE_ELEMENT(y1);
+  SERIALISE_ELEMENT(z);
+  SERIALISE_ELEMENT(s0);
+  SERIALISE_ELEMENT(t0);
+  SERIALISE_ELEMENT(s1);
+  SERIALISE_ELEMENT(t1);
+
+  SERIALISE_CHECK_READ_ERRORS();
+
+  if(IsReplayingAndReading())
+  {
+    GL.glDrawTextureNV(texture.name, sampler.name, x0, y0, x1, y1, z, s0, t0, s1, t1);
+  }
+
+  return true;
+}
+
+void WrappedOpenGL::glDrawTextureNV(GLuint texture, GLuint sampler, GLfloat x0,
+                                    GLfloat y0, GLfloat x1, GLfloat y1, GLfloat z, GLfloat s0,
+                                    GLfloat t0, GLfloat s1, GLfloat t1)
+{
+  SERIALISE_TIME_CALL(GL.glDrawTextureNV(texture, sampler, x0, y0, x1, y1, z, s0, t0, s1, t1));
+
+  if(IsActiveCapturing(m_State))
+  {
+    USE_SCRATCH_SERIALISER();
+    SCOPED_SERIALISE_CHUNK(gl_CurChunk);
+    Serialise_glDrawTextureNV(ser, texture, sampler, x0, y0, x1, y1, z, s0, t0, s1, t1);
+
+    GetContextRecord()->AddChunk(scope.Get());
+  }
+}
+
+template <typename SerialiserType>
 bool WrappedOpenGL::Serialise_glFlush(SerialiserType &ser)
 {
   if(IsReplayingAndReading())
@@ -4989,5 +5032,8 @@ INSTANTIATE_FUNCTION_SERIALISED(void, glClearTexImage, GLuint texture, GLint lev
 INSTANTIATE_FUNCTION_SERIALISED(void, glClearTexSubImage, GLuint texture, GLint level, GLint xoffset,
                                 GLint yoffset, GLint zoffset, GLsizei width, GLsizei height,
                                 GLsizei depth, GLenum format, GLenum type, const void *dataPtr);
+INSTANTIATE_FUNCTION_SERIALISED(void, glDrawTextureNV, GLuint texture, GLuint sampler, GLfloat x0,
+                                GLfloat y0, GLfloat x1, GLfloat y1, GLfloat z,
+                                GLfloat s0, GLfloat t0, GLfloat s1, GLfloat t1);
 INSTANTIATE_FUNCTION_SERIALISED(void, glFlush);
 INSTANTIATE_FUNCTION_SERIALISED(void, glFinish);

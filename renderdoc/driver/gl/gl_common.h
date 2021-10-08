@@ -1986,6 +1986,7 @@ enum class GLChunk : uint32_t
   glTextureImage1DEXT,
   glTextureImage2DEXT,
   glTextureImage3DEXT,
+  glTextureImage3DMultisampleNV,
   glTextureParameterfEXT,
   glTextureParameterfvEXT,
   glTextureParameteriEXT,
@@ -2199,6 +2200,8 @@ enum class GLChunk : uint32_t
   glImportSemaphoreWin32NameEXT,
   glAcquireKeyedMutexWin32EXT,
   glReleaseKeyedMutexWin32EXT,
+
+  glDrawTextureNV,
 
   ContextConfiguration,
 

@@ -267,6 +267,9 @@ void WrappedOpenGL::BuildGLExtensions()
   // techkey added
   m_GLExtensions.push_back("GL_OVR_multiview");
   m_GLExtensions.push_back("GL_OVR_multiview2");
+  m_GLExtensions.push_back("GL_EXT_multiview_texture_multisample");
+  m_GLExtensions.push_back("GL_NV_texture_multisample");
+  m_GLExtensions.push_back("GL_NV_draw_texture");
 
   // this WGL extension is advertised in the gl ext string instead of via the wgl ext string,
   // return it just in case anyone is checking for it via this place. On non-windows platforms
@@ -539,8 +542,10 @@ void WrappedOpenGL::BuildGLESExtensions()
   m_GLESExtensions.push_back("GL_OES_viewport_array");
   m_GLESExtensions.push_back("GL_OVR_multiview");
   m_GLESExtensions.push_back("GL_OVR_multiview2");
+  m_GLESExtensions.push_back("GL_EXT_multiview_texture_multisample");
   m_GLESExtensions.push_back("GL_OVR_multiview_multisampled_render_to_texture");
   m_GLESExtensions.push_back("GL_QCOM_texture_foveated");
+  m_GLESExtensions.push_back("GL_NV_draw_texture");
 
   // advertise EGL extensions in the gl ext string, just in case anyone is checking it for
   // this way.
@@ -4330,6 +4335,8 @@ bool WrappedOpenGL::ProcessChunk(ReadSerialiser &ser, GLChunk chunk)
     case GLChunk::glTexImage3DOES:
     case GLChunk::glTextureImage3DEXT:
       return Serialise_glTextureImage3DEXT(ser, 0, eGL_NONE, 0, 0, 0, 0, 0, 0, eGL_NONE, eGL_NONE, 0);
+    case GLChunk::glTextureImage3DMultisampleNV:
+      return Serialise_glTextureImage3DMultisampleNV(ser, 0, eGL_NONE, 0, 0, 0, 0, 0, 0);
 
     case GLChunk::glCompressedMultiTexImage1DEXT:
     case GLChunk::glCompressedTexImage1D:
@@ -4697,6 +4704,9 @@ bool WrappedOpenGL::ProcessChunk(ReadSerialiser &ser, GLChunk chunk)
       return Serialise_glAcquireKeyedMutexWin32EXT(ser, 0, 0, 0);
     case GLChunk::glReleaseKeyedMutexWin32EXT:
       return Serialise_glReleaseKeyedMutexWin32EXT(ser, 0, 0);
+
+    case GLChunk::glDrawTextureNV:
+      return Serialise_glDrawTextureNV(ser, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     case GLChunk::SwapBuffers:
     case GLChunk::wglSwapBuffers:

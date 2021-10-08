@@ -1137,6 +1137,7 @@
   FUNC(glTextureImage1DEXT, glTextureImage1DEXT); \
   FUNC(glTextureImage2DEXT, glTextureImage2DEXT); \
   FUNC(glTextureImage3DEXT, glTextureImage3DEXT); \
+  FUNC(glTextureImage3DMultisampleNV, glTextureImage3DMultisampleNV); \
   FUNC(glTextureParameterfEXT, glTextureParameterfEXT); \
   FUNC(glTextureParameterfvEXT, glTextureParameterfvEXT); \
   FUNC(glTextureParameteriEXT, glTextureParameteriEXT); \
@@ -1284,6 +1285,7 @@
   FUNC(glGetPerfQueryDataINTEL, glGetPerfQueryDataINTEL); \
   FUNC(glGetPerfQueryIdByNameINTEL, glGetPerfQueryIdByNameINTEL); \
   FUNC(glGetPerfQueryInfoINTEL, glGetPerfQueryInfoINTEL); \
+  FUNC(glDrawTextureNV, glDrawTextureNV); \
   FUNC(wglDXSetResourceShareHandleNV, wglDXSetResourceShareHandleNV); \
   FUNC(wglDXOpenDeviceNV, wglDXOpenDeviceNV); \
   FUNC(wglDXCloseDeviceNV, wglDXCloseDeviceNV); \
@@ -2399,6 +2401,7 @@
   FuncWrapper9(void, glTextureImage1DEXT, GLuint, texture, GLenum, target, GLint, level, GLint, internalformat, GLsizei, width, GLint, border, GLenum, format, GLenum, type, const void *, pixels); \
   FuncWrapper10(void, glTextureImage2DEXT, GLuint, texture, GLenum, target, GLint, level, GLint, internalformat, GLsizei, width, GLsizei, height, GLint, border, GLenum, format, GLenum, type, const void *, pixels); \
   FuncWrapper11(void, glTextureImage3DEXT, GLuint, texture, GLenum, target, GLint, level, GLint, internalformat, GLsizei, width, GLsizei, height, GLsizei, depth, GLint, border, GLenum, format, GLenum, type, const void *, pixels); \
+  FuncWrapper8(void, glTextureImage3DMultisampleNV, GLuint, texture, GLenum, target, GLsizei, samples, GLint, internalformat, GLsizei, width, GLsizei, height, GLsizei, depth, GLboolean, fixedsamplelocations); \
   FuncWrapper4(void, glTextureParameterfEXT, GLuint, texture, GLenum, target, GLenum, pname, GLfloat, param); \
   FuncWrapper4(void, glTextureParameterfvEXT, GLuint, texture, GLenum, target, GLenum, pname, const GLfloat *, params); \
   FuncWrapper4(void, glTextureParameteriEXT, GLuint, texture, GLenum, target, GLenum, pname, GLint, param); \
@@ -2546,6 +2549,7 @@
   FuncWrapper5(void, glGetPerfQueryDataINTEL, GLuint, queryHandle, GLuint, flags, GLsizei, dataSize, void *, data, GLuint *, bytesWritten); \
   FuncWrapper2(void, glGetPerfQueryIdByNameINTEL, GLchar *, queryName, GLuint *, queryId); \
   FuncWrapper7(void, glGetPerfQueryInfoINTEL, GLuint, queryId, GLuint, queryNameLength, GLchar *, queryName, GLuint *, dataSize, GLuint *, noCounters, GLuint *, noInstances, GLuint *, capsMask); \
+  FuncWrapper11(void, glDrawTextureNV, GLuint, texture, GLuint, sampler, GLfloat, x0, GLfloat, y0, GLfloat, x1, GLfloat, y1, GLfloat, z, GLfloat, s0, GLfloat, t0, GLfloat, s1, GLfloat, t1); \
   FuncWrapper2(BOOL, wglDXSetResourceShareHandleNV, void *, dxObject, HANDLE, shareHandle); \
   FuncWrapper1(HANDLE, wglDXOpenDeviceNV, void *, dxDevice); \
   FuncWrapper1(BOOL, wglDXCloseDeviceNV, HANDLE, hDevice); \
@@ -2850,7 +2854,6 @@
   FUNC(glDrawPixels); \
   FUNC(glDrawRangeElementArrayAPPLE); \
   FUNC(glDrawRangeElementArrayATI); \
-  FUNC(glDrawTextureNV); \
   FUNC(glDrawTransformFeedbackEXT); \
   FUNC(glDrawTransformFeedbackInstancedEXT); \
   FUNC(glDrawTransformFeedbackNV); \
@@ -4116,7 +4119,6 @@
   FUNC(glTextureImage2DMultisampleCoverageNV); \
   FUNC(glTextureImage2DMultisampleNV); \
   FUNC(glTextureImage3DMultisampleCoverageNV); \
-  FUNC(glTextureImage3DMultisampleNV); \
   FUNC(glTextureLightEXT); \
   FUNC(glTextureMaterialEXT); \
   FUNC(glTextureNormalEXT); \
@@ -4762,7 +4764,6 @@
   UnsupportedWrapper5(void, glDrawPixels, GLsizei, width, GLsizei, height, GLenum, format, GLenum, type, const void *, pixels); \
   UnsupportedWrapper5(void, glDrawRangeElementArrayAPPLE, GLenum, mode, GLuint, start, GLuint, end, GLint, first, GLsizei, count); \
   UnsupportedWrapper4(void, glDrawRangeElementArrayATI, GLenum, mode, GLuint, start, GLuint, end, GLsizei, count); \
-  UnsupportedWrapper11(void, glDrawTextureNV, GLuint, texture, GLuint, sampler, GLfloat, x0, GLfloat, y0, GLfloat, x1, GLfloat, y1, GLfloat, z, GLfloat, s0, GLfloat, t0, GLfloat, s1, GLfloat, t1); \
   UnsupportedWrapper2(void, glDrawTransformFeedbackEXT, GLenum, mode, GLuint, id); \
   UnsupportedWrapper3(void, glDrawTransformFeedbackInstancedEXT, GLenum, mode, GLuint, id, GLsizei, instancecount); \
   UnsupportedWrapper2(void, glDrawTransformFeedbackNV, GLenum, mode, GLuint, id); \
@@ -6028,7 +6029,6 @@
   UnsupportedWrapper8(void, glTextureImage2DMultisampleCoverageNV, GLuint, texture, GLenum, target, GLsizei, coverageSamples, GLsizei, colorSamples, GLint, internalFormat, GLsizei, width, GLsizei, height, GLboolean, fixedSampleLocations); \
   UnsupportedWrapper7(void, glTextureImage2DMultisampleNV, GLuint, texture, GLenum, target, GLsizei, samples, GLint, internalFormat, GLsizei, width, GLsizei, height, GLboolean, fixedSampleLocations); \
   UnsupportedWrapper9(void, glTextureImage3DMultisampleCoverageNV, GLuint, texture, GLenum, target, GLsizei, coverageSamples, GLsizei, colorSamples, GLint, internalFormat, GLsizei, width, GLsizei, height, GLsizei, depth, GLboolean, fixedSampleLocations); \
-  UnsupportedWrapper8(void, glTextureImage3DMultisampleNV, GLuint, texture, GLenum, target, GLsizei, samples, GLint, internalFormat, GLsizei, width, GLsizei, height, GLsizei, depth, GLboolean, fixedSampleLocations); \
   UnsupportedWrapper1(void, glTextureLightEXT, GLenum, pname); \
   UnsupportedWrapper2(void, glTextureMaterialEXT, GLenum, face, GLenum, mode); \
   UnsupportedWrapper1(void, glTextureNormalEXT, GLenum, mode); \
