@@ -437,6 +437,9 @@ T CheckConstParam(T t);
 // debugbreak.
 #define GLNOTIMP(...) RDCDEBUG("OpenGL not implemented - " __VA_ARGS__)
 
+#define IMPLEMENT_FUNCTION(ret, func, ...) \
+  ret func(__VA_ARGS__);
+
 #define IMPLEMENT_FUNCTION_SERIALISED(ret, func, ...) \
   ret func(__VA_ARGS__);                              \
   template <typename SerialiserType>                  \
@@ -1986,8 +1989,12 @@ enum class GLChunk : uint32_t
   glTextureImage1DEXT,
   glTextureImage2DEXT,
   glTextureImage3DEXT,
+  glTexImage2DMultisampleCoverageNV,
+  glTexImage3DMultisampleCoverageNV,
   glTextureImage2DMultisampleNV,
   glTextureImage3DMultisampleNV,
+  glTextureImage2DMultisampleCoverageNV,
+  glTextureImage3DMultisampleCoverageNV,
   glTextureParameterfEXT,
   glTextureParameterfvEXT,
   glTextureParameteriEXT,

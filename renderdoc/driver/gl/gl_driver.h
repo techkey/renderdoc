@@ -805,6 +805,8 @@ public:
           width(0),
           height(0),
           depth(0),
+          coverageSamples(0),
+          colorSamples(0),
           samples(0),
           creationFlags(TextureCategory::NoFlags),
           internalFormat(eGL_NONE),
@@ -819,7 +821,7 @@ public:
     GLenum curType;
     GLint dimension;
     bool emulated, view;
-    GLint width, height, depth, samples;
+    GLint width, height, depth, coverageSamples, colorSamples, samples;
     TextureCategory creationFlags;
     GLenum internalFormat;
     GLenum initFormatHint, initTypeHint;
@@ -1947,12 +1949,27 @@ public:
   void Common_glTextureImage3DEXT(ResourceId id, GLenum target, GLint level, GLint internalformat,
                                   GLsizei width, GLsizei height, GLsizei depth, GLint border,
                                   GLenum format, GLenum type, const void *pixels);
+  void Common_glTexImage2DMultisampleCoverageNV(GLenum target,
+                                                GLsizei coveragesamples, GLsizei colorsamples,
+                                                GLint internalformat, GLsizei width,
+                                                GLsizei height, GLboolean fixedsamplelocations);
+  void Common_glTexImage3DMultisampleCoverageNV(GLenum target,
+                                                GLsizei coveragesamples, GLsizei colorsamples,
+                                                GLint internalformat, GLsizei width,
+                                                GLsizei height, GLsizei depth,
+                                                GLboolean fixedsamplelocations);
   void Common_glTextureImage2DMultisampleNV(ResourceId id, GLenum target, GLsizei samples,
                                             GLint internalformat, GLsizei width, GLsizei height, 
                                             GLboolean fixedsamplelocations);
   void Common_glTextureImage3DMultisampleNV(ResourceId id, GLenum target, GLsizei samples,
                                             GLint internalformat, GLsizei width, GLsizei height, 
                                             GLsizei depth, GLboolean fixedsamplelocations);
+  void Common_glTextureImage2DMultisampleCoverageNV(ResourceId id, GLenum target, GLsizei coveragesamples, 
+                                            GLsizei colorsamples, GLint internalformat, GLsizei width, 
+                                            GLsizei height, GLboolean fixedsamplelocations);
+  void Common_glTextureImage3DMultisampleCoverageNV(ResourceId id, GLenum target, GLsizei coveragesamples, 
+                                            GLsizei colorsamples, GLint internalformat, GLsizei width, 
+                                            GLsizei height, GLsizei depth, GLboolean fixedsamplelocations);
   void Common_glCompressedTextureImage1DEXT(ResourceId id, GLenum target, GLint level,
                                             GLenum internalformat, GLsizei width, GLint border,
                                             GLsizei imageSize, const void *bits);
@@ -2248,10 +2265,26 @@ public:
   IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage3DEXT, GLuint texture, GLenum target, GLint level,
                                 GLint internalformat, GLsizei width, GLsizei height, GLsizei depth,
                                 GLint border, GLenum format, GLenum type, const void *pixels);
-  IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage2DMultisampleNV, GLuint texture, GLenum target, GLint level,
+  IMPLEMENT_FUNCTION(void, glTexImage2DMultisampleCoverageNV,
+                     GLenum target, GLsizei coveragesamples, GLsizei colorsamples,
+                     GLint internalformat, GLsizei width, GLsizei height,
+                     GLboolean fixedsamplelocations);
+  IMPLEMENT_FUNCTION(void, glTexImage3DMultisampleCoverageNV,
+                     GLenum target, GLsizei coveragesamples, GLsizei colorsamples,
+                     GLint internalformat, GLsizei width, GLsizei height, GLsizei depth,
+                     GLboolean fixedsamplelocations);
+  IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage2DMultisampleNV, GLuint texture, GLenum target, 
+                                GLsizei samples, GLint internalformat, GLsizei width, GLsizei height,
+                                GLboolean fixedsamplelocations);
+  IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage3DMultisampleNV, GLuint texture, GLenum target, 
+                                GLsizei samples, GLint internalformat, GLsizei width, GLsizei height, 
+                                GLsizei depth, GLboolean fixedsamplelocations);
+  IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage2DMultisampleCoverageNV, GLuint texture, GLenum target, 
+                                GLsizei coveragesamples, GLsizei colorsamples,
                                 GLint internalformat, GLsizei width, GLsizei height,
                                 GLboolean fixedsamplelocations);
-  IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage3DMultisampleNV, GLuint texture, GLenum target, GLint level,
+  IMPLEMENT_FUNCTION_SERIALISED(void, glTextureImage3DMultisampleCoverageNV, GLuint texture, GLenum target, 
+                                GLsizei coveragesamples, GLsizei colorsamples,
                                 GLint internalformat, GLsizei width, GLsizei height, GLsizei depth,
                                 GLboolean fixedsamplelocations);
   IMPLEMENT_FUNCTION_SERIALISED(void, glTextureParameterfEXT, GLuint texture, GLenum target,

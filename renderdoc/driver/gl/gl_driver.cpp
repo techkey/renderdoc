@@ -4340,6 +4340,14 @@ bool WrappedOpenGL::ProcessChunk(ReadSerialiser &ser, GLChunk chunk)
     case GLChunk::glTextureImage3DMultisampleNV:
       return Serialise_glTextureImage3DMultisampleNV(ser, 0, eGL_NONE, 0, 0, 0, 0, 0, 0);
 
+    case GLChunk::glTexImage2DMultisampleCoverageNV:
+    case GLChunk::glTextureImage2DMultisampleCoverageNV:
+      return Serialise_glTextureImage2DMultisampleCoverageNV(ser, 0, eGL_NONE, 0, 0, 0, 0, 0, 0);
+
+    case GLChunk::glTexImage3DMultisampleCoverageNV:
+    case GLChunk::glTextureImage3DMultisampleCoverageNV:
+      return Serialise_glTextureImage3DMultisampleCoverageNV(ser, 0, eGL_NONE, 0, 0, 0, 0, 0, 0, 0);
+
     case GLChunk::glCompressedMultiTexImage1DEXT:
     case GLChunk::glCompressedTexImage1D:
     case GLChunk::glCompressedTexImage1DARB:

@@ -1137,8 +1137,12 @@
   FUNC(glTextureImage1DEXT, glTextureImage1DEXT); \
   FUNC(glTextureImage2DEXT, glTextureImage2DEXT); \
   FUNC(glTextureImage3DEXT, glTextureImage3DEXT); \
+  FUNC(glTexImage2DMultisampleCoverageNV, glTexImage2DMultisampleCoverageNV); \
+  FUNC(glTexImage3DMultisampleCoverageNV, glTexImage3DMultisampleCoverageNV); \
   FUNC(glTextureImage2DMultisampleNV, glTextureImage2DMultisampleNV); \
   FUNC(glTextureImage3DMultisampleNV, glTextureImage3DMultisampleNV); \
+  FUNC(glTextureImage2DMultisampleCoverageNV, glTextureImage2DMultisampleCoverageNV); \
+  FUNC(glTextureImage3DMultisampleCoverageNV, glTextureImage3DMultisampleCoverageNV); \
   FUNC(glTextureParameterfEXT, glTextureParameterfEXT); \
   FUNC(glTextureParameterfvEXT, glTextureParameterfvEXT); \
   FUNC(glTextureParameteriEXT, glTextureParameteriEXT); \
@@ -2402,8 +2406,12 @@
   FuncWrapper9(void, glTextureImage1DEXT, GLuint, texture, GLenum, target, GLint, level, GLint, internalformat, GLsizei, width, GLint, border, GLenum, format, GLenum, type, const void *, pixels); \
   FuncWrapper10(void, glTextureImage2DEXT, GLuint, texture, GLenum, target, GLint, level, GLint, internalformat, GLsizei, width, GLsizei, height, GLint, border, GLenum, format, GLenum, type, const void *, pixels); \
   FuncWrapper11(void, glTextureImage3DEXT, GLuint, texture, GLenum, target, GLint, level, GLint, internalformat, GLsizei, width, GLsizei, height, GLsizei, depth, GLint, border, GLenum, format, GLenum, type, const void *, pixels); \
+  FuncWrapper7(void, glTexImage2DMultisampleCoverageNV, GLenum, target, GLsizei, coveragesamples, GLsizei, colorsamples, GLint, internalformat, GLsizei, width, GLsizei, height, GLboolean, fixedsamplelocations); \
+  FuncWrapper8(void, glTexImage3DMultisampleCoverageNV, GLenum, target, GLsizei, coveragesamples, GLsizei, colorsamples, GLint, internalformat, GLsizei, width, GLsizei, height, GLsizei, depth, GLboolean, fixedsamplelocations); \
   FuncWrapper7(void, glTextureImage2DMultisampleNV, GLuint, texture, GLenum, target, GLsizei, samples, GLint, internalformat, GLsizei, width, GLsizei, height, GLboolean, fixedsamplelocations); \
   FuncWrapper8(void, glTextureImage3DMultisampleNV, GLuint, texture, GLenum, target, GLsizei, samples, GLint, internalformat, GLsizei, width, GLsizei, height, GLsizei, depth, GLboolean, fixedsamplelocations); \
+  FuncWrapper8(void, glTextureImage2DMultisampleCoverageNV, GLuint, texture, GLenum, target, GLsizei, coveragesamples, GLsizei, colorsamples, GLint, internalformat, GLsizei, width, GLsizei, height, GLboolean, fixedsamplelocations); \
+  FuncWrapper9(void, glTextureImage3DMultisampleCoverageNV, GLuint, texture, GLenum, target, GLsizei, coveragesamples, GLsizei, colorsamples, GLint, internalformat, GLsizei, width, GLsizei, height, GLsizei, depth, GLboolean, fixedsamplelocations); \
   FuncWrapper4(void, glTextureParameterfEXT, GLuint, texture, GLenum, target, GLenum, pname, GLfloat, param); \
   FuncWrapper4(void, glTextureParameterfvEXT, GLuint, texture, GLenum, target, GLenum, pname, const GLfloat *, params); \
   FuncWrapper4(void, glTextureParameteriEXT, GLuint, texture, GLenum, target, GLenum, pname, GLint, param); \
@@ -4103,8 +4111,6 @@
   FUNC(glTexGeniv); \
   FUNC(glTexGenxOES); \
   FUNC(glTexGenxvOES); \
-  FUNC(glTexImage2DMultisampleCoverageNV); \
-  FUNC(glTexImage3DMultisampleCoverageNV); \
   FUNC(glTexImage4DSGIS); \
   FUNC(glTexPageCommitmentARB); \
   FUNC(glTexPageCommitmentEXT); \
@@ -4118,8 +4124,6 @@
   FUNC(glTexSubImage4DSGIS); \
   FUNC(glTextureBarrierNV); \
   FUNC(glTextureColorMaskSGIS); \
-  FUNC(glTextureImage2DMultisampleCoverageNV); \
-  FUNC(glTextureImage3DMultisampleCoverageNV); \
   FUNC(glTextureLightEXT); \
   FUNC(glTextureMaterialEXT); \
   FUNC(glTextureNormalEXT); \
@@ -6012,8 +6016,6 @@
   UnsupportedWrapper3(void, glTexGeniv, GLenum, coord, GLenum, pname, const GLint *, params); \
   UnsupportedWrapper3(void, glTexGenxOES, GLenum, coord, GLenum, pname, GLfixed, param); \
   UnsupportedWrapper3(void, glTexGenxvOES, GLenum, coord, GLenum, pname, const GLfixed *, params); \
-  UnsupportedWrapper7(void, glTexImage2DMultisampleCoverageNV, GLenum, target, GLsizei, coverageSamples, GLsizei, colorSamples, GLint, internalFormat, GLsizei, width, GLsizei, height, GLboolean, fixedSampleLocations); \
-  UnsupportedWrapper8(void, glTexImage3DMultisampleCoverageNV, GLenum, target, GLsizei, coverageSamples, GLsizei, colorSamples, GLint, internalFormat, GLsizei, width, GLsizei, height, GLsizei, depth, GLboolean, fixedSampleLocations); \
   UnsupportedWrapper11(void, glTexImage4DSGIS, GLenum, target, GLint, level, GLenum, internalformat, GLsizei, width, GLsizei, height, GLsizei, depth, GLsizei, size4d, GLint, border, GLenum, format, GLenum, type, const void *, pixels); \
   UnsupportedWrapper9(void, glTexPageCommitmentARB, GLenum, target, GLint, level, GLint, xoffset, GLint, yoffset, GLint, zoffset, GLsizei, width, GLsizei, height, GLsizei, depth, GLboolean, commit); \
   UnsupportedWrapper9(void, glTexPageCommitmentEXT, GLenum, target, GLint, level, GLint, xoffset, GLint, yoffset, GLint, zoffset, GLsizei, width, GLsizei, height, GLsizei, depth, GLboolean, commit); \
@@ -6027,8 +6029,6 @@
   UnsupportedWrapper13(void, glTexSubImage4DSGIS, GLenum, target, GLint, level, GLint, xoffset, GLint, yoffset, GLint, zoffset, GLint, woffset, GLsizei, width, GLsizei, height, GLsizei, depth, GLsizei, size4d, GLenum, format, GLenum, type, const void *, pixels); \
   UnsupportedWrapper0(void, glTextureBarrierNV); \
   UnsupportedWrapper4(void, glTextureColorMaskSGIS, GLboolean, red, GLboolean, green, GLboolean, blue, GLboolean, alpha); \
-  UnsupportedWrapper8(void, glTextureImage2DMultisampleCoverageNV, GLuint, texture, GLenum, target, GLsizei, coverageSamples, GLsizei, colorSamples, GLint, internalFormat, GLsizei, width, GLsizei, height, GLboolean, fixedSampleLocations); \
-  UnsupportedWrapper9(void, glTextureImage3DMultisampleCoverageNV, GLuint, texture, GLenum, target, GLsizei, coverageSamples, GLsizei, colorSamples, GLint, internalFormat, GLsizei, width, GLsizei, height, GLsizei, depth, GLboolean, fixedSampleLocations); \
   UnsupportedWrapper1(void, glTextureLightEXT, GLenum, pname); \
   UnsupportedWrapper2(void, glTextureMaterialEXT, GLenum, face, GLenum, mode); \
   UnsupportedWrapper1(void, glTextureNormalEXT, GLenum, mode); \

@@ -2091,7 +2091,17 @@ void GLResourceManager::Apply_InitialState(GLResource live, const GLInitialConte
             }
             else
             {
-              if(VendorCheck[VendorCheck_Qualcomm_avoid_glCopyImageSubData])
+              if (details.coverageSamples && details.coverageSamples != details.samples)
+              {
+                GLint tex_samples{};
+                GL.glGetTextureLevelParameteriv(tex, 0, eGL_TEXTURE_SAMPLES, &tex_samples);
+                GLint live_samples{};
+                GL.glGetTextureLevelParameteriv(live.name, 0, eGL_TEXTURE_SAMPLES, &live_samples);
+
+                GL.glCopyImageSubData(tex, details.curType, i, 0, 0, 0, live.name, details.curType,
+                                      i, 0, 0, 0, w, h, d);
+              }
+              else if(VendorCheck[VendorCheck_Qualcomm_avoid_glCopyImageSubData])
                 glEmulate::_glCopyImageSubData(tex, details.curType, i, 0, 0, 0, live.name,
                                                details.curType, i, 0, 0, 0, w, h, d);
               else
