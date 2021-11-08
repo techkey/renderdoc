@@ -1923,6 +1923,8 @@ uint32_t D3D12Replay::PickVertex(uint32_t eventId, int32_t width, int32_t height
   cbuf.PickIdx = cfg.position.indexByteStride ? 1 : 0;
   cbuf.PickNumVerts = cfg.position.numIndices;
   cbuf.PickUnproject = cfg.position.unproject ? 1 : 0;
+  cbuf.PickFlipY = cfg.position.flipY;
+  cbuf.PickOrtho = cfg.ortho;
 
   Matrix4f projMat = Matrix4f::Perspective(90.0f, 0.1f, 100000.0f, float(width) / float(height));
 
@@ -1930,15 +1932,23 @@ uint32_t D3D12Replay::PickVertex(uint32_t eventId, int32_t width, int32_t height
 
   Matrix4f pickMVP = projMat.Mul(camMat);
 
-  Matrix4f pickMVPProj;
+  bool reverseProjection = false;
+  Matrix4f guessProj;
+  Matrix4f guessProjInverse;
   if(cfg.position.unproject)
   {
     // the derivation of the projection matrix might not be right (hell, it could be an
     // orthographic projection). But it'll be close enough likely.
-    Matrix4f guessProj =
-        cfg.position.farPlane != FLT_MAX
-            ? Matrix4f::Perspective(cfg.fov, cfg.position.nearPlane, cfg.position.farPlane, cfg.aspect)
-            : Matrix4f::ReversePerspective(cfg.fov, cfg.position.nearPlane, cfg.aspect);
+    if(cfg.position.farPlane != FLT_MAX)
+    {
+      guessProj =
+          Matrix4f::Perspective(cfg.fov, cfg.position.nearPlane, cfg.position.farPlane, cfg.aspect);
+    }
+    else
+    {
+      reverseProjection = true;
+      guessProj = Matrix4f::ReversePerspective(cfg.fov, cfg.position.nearPlane, cfg.aspect);
+    }
 
     if(cfg.ortho)
       guessProj = Matrix4f::Orthographic(cfg.position.nearPlane, cfg.position.farPlane);
@@ -1946,62 +1956,109 @@ uint32_t D3D12Replay::PickVertex(uint32_t eventId, int32_t width, int32_t height
     if(cfg.position.flipY)
       guessProj[5] *= -1.0f;
 
-    pickMVPProj = projMat.Mul(camMat.Mul(guessProj.Inverse()));
+    guessProjInverse = guessProj.Inverse();
   }
 
   Vec3f rayPos;
   Vec3f rayDir;
   // convert mouse pos to world space ray
   {
-    Matrix4f inversePickMVP = pickMVP.Inverse();
-
     float pickX = ((float)x) / ((float)width);
     float pickXCanonical = RDCLERP(-1.0f, 1.0f, pickX);
 
     float pickY = ((float)y) / ((float)height);
-    // flip the Y axis
+    // flip the Y axis by default for Y-up
     float pickYCanonical = RDCLERP(1.0f, -1.0f, pickY);
 
-    Vec3f cameraToWorldNearPosition =
-        inversePickMVP.Transform(Vec3f(pickXCanonical, pickYCanonical, -1), 1);
+    if(cfg.position.flipY && !cfg.ortho)
+      pickYCanonical = -pickYCanonical;
 
-    Vec3f cameraToWorldFarPosition =
-        inversePickMVP.Transform(Vec3f(pickXCanonical, pickYCanonical, 1), 1);
+    // x/y is inside the window. Since we're not using the window projection we need to correct
+    // for the aspect ratio here.
+    if(cfg.position.unproject && !cfg.ortho)
+      pickXCanonical *= (float(width) / float(height)) / cfg.aspect;
 
-    Vec3f testDir = (cameraToWorldFarPosition - cameraToWorldNearPosition);
-    testDir.Normalise();
+    // set up the NDC near/far pos
+    Vec3f nearPosNDC = Vec3f(pickXCanonical, pickYCanonical, 0);
+    Vec3f farPosNDC = Vec3f(pickXCanonical, pickYCanonical, 1);
 
-    // Calculate the ray direction first in the regular way (above), so we can use the
-    // the output for testing if the ray we are picking is negative or not. This is similar
-    // to checking against the forward direction of the camera, but more robust
-    if(cfg.position.unproject)
+    if(cfg.position.unproject && cfg.ortho)
     {
-      Matrix4f inversePickMVPGuess = pickMVPProj.Inverse();
+      // orthographic projections we raycast in NDC space
+      Matrix4f inversePickMVP = pickMVP.Inverse();
 
-      Vec3f nearPosProj = inversePickMVPGuess.Transform(Vec3f(pickXCanonical, pickYCanonical, -1), 1);
+      // transform from the desired NDC co-ordinates into camera space
+      Vec3f nearPosCamera = inversePickMVP.Transform(nearPosNDC, 1);
+      Vec3f farPosCamera = inversePickMVP.Transform(farPosNDC, 1);
 
-      Vec3f farPosProj = inversePickMVPGuess.Transform(Vec3f(pickXCanonical, pickYCanonical, 1), 1);
+      Vec3f testDir = (farPosCamera - nearPosCamera);
+      testDir.Normalise();
+
+      Matrix4f pickMVPguessProjInverse = guessProj.Mul(inversePickMVP);
+
+      Vec3f nearPosProj = pickMVPguessProjInverse.Transform(nearPosNDC, 1);
+      Vec3f farPosProj = pickMVPguessProjInverse.Transform(farPosNDC, 1);
 
       rayDir = (farPosProj - nearPosProj);
       rayDir.Normalise();
 
+      // Calculate the ray direction first in the regular way (above), so we can use the
+      // the output for testing if the ray we are picking is negative or not. This is similar
+      // to checking against the forward direction of the camera, but more robust
       if(testDir.z < 0)
       {
         rayDir = -rayDir;
       }
       rayPos = nearPosProj;
     }
+    else if(cfg.position.unproject)
+    {
+      // projected data we pick in world-space to avoid problems with handling unusual transforms
+
+      if(reverseProjection)
+      {
+        farPosNDC.z = 1e-6f;
+        nearPosNDC.z = 1e+6f;
+      }
+
+      // invert the guessed projection matrix to get the near/far pos in camera space
+      Vec3f nearPosCamera = guessProjInverse.Transform(nearPosNDC, 1.0f);
+      Vec3f farPosCamera = guessProjInverse.Transform(farPosNDC, 1.0f);
+
+      // normalise and generate the ray
+      rayDir = (farPosCamera - nearPosCamera);
+      rayDir.Normalise();
+
+      farPosCamera = nearPosCamera + rayDir;
+
+      // invert the camera transform to transform the ray as camera-relative into world space
+      Matrix4f inverseCamera = camMat.Inverse();
+
+      Vec3f nearPosWorld = inverseCamera.Transform(nearPosCamera, 1);
+      Vec3f farPosWorld = inverseCamera.Transform(farPosCamera, 1);
+
+      // again normalise our final ray
+      rayDir = (farPosWorld - nearPosWorld);
+      rayDir.Normalise();
+
+      rayPos = nearPosWorld;
+    }
     else
     {
-      rayDir = testDir;
-      rayPos = cameraToWorldNearPosition;
+      Matrix4f inversePickMVP = pickMVP.Inverse();
+
+      // transform from the desired NDC co-ordinates into model space
+      Vec3f nearPosCamera = inversePickMVP.Transform(nearPosNDC, 1);
+      Vec3f farPosCamera = inversePickMVP.Transform(farPosNDC, 1);
+
+      rayDir = (farPosCamera - nearPosCamera);
+      rayDir.Normalise();
+      rayPos = nearPosCamera;
     }
   }
 
   cbuf.PickRayPos = rayPos;
   cbuf.PickRayDir = rayDir;
-
-  cbuf.PickMVP = cfg.position.unproject ? pickMVPProj : pickMVP;
 
   bool isTriangleMesh = true;
   switch(cfg.position.topology)
@@ -2031,6 +2088,31 @@ uint32_t D3D12Replay::PickVertex(uint32_t eventId, int32_t width, int32_t height
       cbuf.PickMeshMode = MESH_OTHER;
       isTriangleMesh = false;
     }
+  }
+
+  if(cfg.position.unproject && isTriangleMesh)
+  {
+    // projected triangle meshes we transform the vertices into world space, and ray-cast against
+    // that
+    //
+    // NOTE: for ortho, this matrix is not used and we just do the perspective W division on model
+    // vertices. The ray is cast in NDC
+    if(cfg.ortho)
+      cbuf.PickTransformMat = Matrix4f::Identity();
+    else
+      cbuf.PickTransformMat = guessProjInverse;
+  }
+  else if(cfg.position.unproject)
+  {
+    // projected non-triangles are just point clouds, so we transform the vertices into world space
+    // then project them back onto the output and compare that against the picking 2D co-ordinates
+    cbuf.PickTransformMat = pickMVP.Mul(guessProjInverse);
+  }
+  else
+  {
+    // plain meshes of either type, we just transform from model space to the output, and raycast or
+    // co-ordinate check
+    cbuf.PickTransformMat = pickMVP;
   }
 
   ID3D12Resource *vb = NULL, *ib = NULL;
@@ -3879,10 +3961,9 @@ void D3D12Replay::BuildCustomShader(ShaderEncoding sourceEncoding, const bytebuf
   BuildShader(sourceEncoding, source, entry, compileFlags, m_CustomShaderIncludes, type, id, errors);
 }
 
-ResourceId D3D12Replay::ApplyCustomShader(ResourceId shader, ResourceId texid,
-                                          const Subresource &sub, CompType typeCast)
+ResourceId D3D12Replay::ApplyCustomShader(TextureDisplay &display)
 {
-  ID3D12Resource *resource = m_pDevice->GetResourceList()[texid];
+  ID3D12Resource *resource = m_pDevice->GetResourceList()[display.resourceId];
 
   if(resource == NULL)
     return ResourceId();
@@ -3941,7 +4022,7 @@ ResourceId D3D12Replay::ApplyCustomShader(ResourceId shader, ResourceId texid,
   D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
   rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
   rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-  rtvDesc.Texture2D.MipSlice = sub.mip;
+  rtvDesc.Texture2D.MipSlice = display.subresource.mip;
 
   m_pDevice->CreateRenderTargetView(m_CustomShaderTex, &rtvDesc,
                                     GetDebugManager()->GetCPUHandle(CUSTOM_SHADER_RTV));
@@ -3960,12 +4041,12 @@ ResourceId D3D12Replay::ApplyCustomShader(ResourceId shader, ResourceId texid,
   disp.flipY = false;
   disp.xOffset = 0.0f;
   disp.yOffset = 0.0f;
-  disp.customShaderId = shader;
-  disp.resourceId = texid;
-  disp.typeCast = typeCast;
+  disp.customShaderId = display.customShaderId;
+  disp.resourceId = display.resourceId;
+  disp.typeCast = display.typeCast;
   disp.hdrMultiplier = -1.0f;
   disp.linearDisplayAsGamma = false;
-  disp.subresource = sub;
+  disp.subresource = display.subresource;
   disp.overlay = DebugOverlay::NoOverlay;
   disp.rangeMin = 0.0f;
   disp.rangeMax = 1.0f;
@@ -3977,8 +4058,8 @@ ResourceId D3D12Replay::ApplyCustomShader(ResourceId shader, ResourceId texid,
   m_OutputViewport = {
       0,
       0,
-      (float)RDCMAX(1ULL, resDesc.Width >> sub.mip),
-      (float)RDCMAX(1U, resDesc.Height >> sub.mip),
+      (float)RDCMAX(1ULL, resDesc.Width >> display.subresource.mip),
+      (float)RDCMAX(1U, resDesc.Height >> display.subresource.mip),
       0.0f,
       1.0f,
   };

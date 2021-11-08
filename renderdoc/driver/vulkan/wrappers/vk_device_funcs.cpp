@@ -179,7 +179,8 @@ static void StripUnwantedExtensions(rdcarray<rdcstr> &Extensions)
     }
 
     // remove WSI-only extensions
-    if(ext == "VK_GOOGLE_display_timing")
+    if(ext == "VK_GOOGLE_display_timing" || ext == "VK_KHR_display_swapchain" ||
+       ext == "VK_EXT_display_control" || ext == "VK_KHR_present_id")
       return true;
 
     // remove fullscreen exclusive extension
@@ -188,7 +189,8 @@ static void StripUnwantedExtensions(rdcarray<rdcstr> &Extensions)
 
     // this is debug only, nothing to capture, so nothing to replay
     if(ext == "VK_EXT_tooling_info" || ext == "VK_EXT_private_data" ||
-       ext == "VK_EXT_validation_features" || ext == "VK_EXT_validation_flags")
+       ext == "VK_EXT_validation_features" || ext == "VK_EXT_validation_cache" ||
+       ext == "VK_EXT_validation_flags")
       return true;
 
     // these are debug only and will be added (if supported) as optional
@@ -1618,19 +1620,6 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
     rdcarray<rdcstr> Extensions;
     for(uint32_t i = 0; i < createInfo.enabledExtensionCount; i++)
     {
-      // don't include the debug marker extension
-      if(!strcmp(createInfo.ppEnabledExtensionNames[i], VK_EXT_DEBUG_MARKER_EXTENSION_NAME))
-        continue;
-
-      // don't include the validation cache extension
-      if(!strcmp(createInfo.ppEnabledExtensionNames[i], VK_EXT_VALIDATION_CACHE_EXTENSION_NAME))
-        continue;
-
-      // don't include direct-display WSI extensions
-      if(!strcmp(createInfo.ppEnabledExtensionNames[i], VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME) ||
-         !strcmp(createInfo.ppEnabledExtensionNames[i], VK_EXT_DISPLAY_CONTROL_EXTENSION_NAME))
-        continue;
-
       Extensions.push_back(createInfo.ppEnabledExtensionNames[i]);
     }
 
@@ -2062,12 +2051,18 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       return false;
     }
 
-    // remove private data structs to improve capture compatibility, since we don't replay any
-    // private data.
+    // remove structs from extensions that we have stripped but may still be referenced here,
+    // to ensure we don't pass structs for disabled extensions.
     if(RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_DEVICE_PRIVATE_DATA_CREATE_INFO_EXT) ||
        RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIVATE_DATA_FEATURES_EXT))
     {
-      RDCLOG("Removed private data structs from vkCreateDevice pNext chain");
+      RDCLOG("Removed VK_EXT_private_data structs from vkCreateDevice pNext chain");
+    }
+
+    if(RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR) ||
+       RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR))
+    {
+      RDCLOG("Removed VK_KHR_present_id/wait structs from vkCreateDevice pNext chain");
     }
 
     VkPhysicalDeviceFeatures enabledFeatures = {0};
@@ -2309,6 +2304,13 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
         CHECK_PHYS_EXT_FEATURE(fragmentDensityMap);
         CHECK_PHYS_EXT_FEATURE(fragmentDensityMapDynamic);
         CHECK_PHYS_EXT_FEATURE(fragmentDensityMapNonSubsampledImages);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceFragmentDensityMap2FeaturesEXT,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_2_FEATURES_EXT);
+      {
+        CHECK_PHYS_EXT_FEATURE(fragmentDensityMapDeferred);
       }
       END_PHYS_EXT_CHECK();
 
@@ -2734,6 +2736,103 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
                            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR);
       {
         CHECK_PHYS_EXT_FEATURE(synchronization2);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceMaintenance4FeaturesKHR,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES_KHR);
+      {
+        CHECK_PHYS_EXT_FEATURE(maintenance4);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceShaderIntegerDotProductFeaturesKHR,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES_KHR);
+      {
+        CHECK_PHYS_EXT_FEATURE(shaderIntegerDotProduct);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(
+          VkPhysicalDeviceShaderSubgroupUniformControlFlowFeaturesKHR,
+          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_UNIFORM_CONTROL_FLOW_FEATURES_KHR);
+      {
+        CHECK_PHYS_EXT_FEATURE(shaderSubgroupUniformControlFlow);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceShaderAtomicFloat2FeaturesEXT,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_2_FEATURES_EXT);
+      {
+        CHECK_PHYS_EXT_FEATURE(shaderBufferFloat16Atomics);
+        CHECK_PHYS_EXT_FEATURE(shaderBufferFloat16AtomicAdd);
+        CHECK_PHYS_EXT_FEATURE(shaderBufferFloat16AtomicMinMax);
+        CHECK_PHYS_EXT_FEATURE(shaderBufferFloat32AtomicMinMax);
+        CHECK_PHYS_EXT_FEATURE(shaderBufferFloat64AtomicMinMax);
+        CHECK_PHYS_EXT_FEATURE(shaderSharedFloat16Atomics);
+        CHECK_PHYS_EXT_FEATURE(shaderSharedFloat16AtomicAdd);
+        CHECK_PHYS_EXT_FEATURE(shaderSharedFloat16AtomicMinMax);
+        CHECK_PHYS_EXT_FEATURE(shaderSharedFloat32AtomicMinMax);
+        CHECK_PHYS_EXT_FEATURE(shaderSharedFloat64AtomicMinMax);
+        CHECK_PHYS_EXT_FEATURE(shaderImageFloat32AtomicMinMax);
+        CHECK_PHYS_EXT_FEATURE(sparseImageFloat32AtomicMinMax);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceYcbcr2Plane444FormatsFeaturesEXT,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_YCBCR_2_PLANE_444_FORMATS_FEATURES_EXT);
+      {
+        CHECK_PHYS_EXT_FEATURE(ycbcr2plane444Formats);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceRGBA10X6FormatsFeaturesEXT,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RGBA10X6_FORMATS_FEATURES_EXT);
+      {
+        CHECK_PHYS_EXT_FEATURE(formatRgba10x6WithoutYCbCrSampler);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceGlobalPriorityQueryFeaturesEXT,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GLOBAL_PRIORITY_QUERY_FEATURES_EXT);
+      {
+        CHECK_PHYS_EXT_FEATURE(globalPriorityQuery);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceColorWriteEnableFeaturesEXT,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COLOR_WRITE_ENABLE_FEATURES_EXT);
+      {
+        CHECK_PHYS_EXT_FEATURE(colorWriteEnable);
+
+        m_DynColorWrite = (ext->colorWriteEnable != VK_FALSE);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceExtendedDynamicState2FeaturesEXT,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT);
+      {
+        CHECK_PHYS_EXT_FEATURE(extendedDynamicState2);
+        CHECK_PHYS_EXT_FEATURE(extendedDynamicState2LogicOp);
+        CHECK_PHYS_EXT_FEATURE(extendedDynamicState2PatchControlPoints);
+
+        m_ExtendedDynState2 = (ext->extendedDynamicState2 != VK_FALSE);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceVertexInputDynamicStateFeaturesEXT,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_INPUT_DYNAMIC_STATE_FEATURES_EXT);
+      {
+        CHECK_PHYS_EXT_FEATURE(vertexInputDynamicState);
+
+        m_DynVertexInput = (ext->vertexInputDynamicState != VK_FALSE);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceDynamicRenderingFeaturesKHR,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR);
+      {
+        CHECK_PHYS_EXT_FEATURE(dynamicRendering);
       }
       END_PHYS_EXT_CHECK();
     }

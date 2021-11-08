@@ -51,7 +51,9 @@ void GLReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &secondar
 
   Matrix4f camMat = cfg.cam ? ((Camera *)cfg.cam)->GetMatrix() : Matrix4f::Identity();
 
-  Matrix4f ModelViewProj = projMat.Mul(camMat);
+  Matrix4f axisMapMat = Matrix4f(cfg.axisMapping);
+
+  Matrix4f ModelViewProj = projMat.Mul(camMat.Mul(axisMapMat));
   Matrix4f guessProjInv;
 
   drv.glBindVertexArray(DebugData.meshVAO);
@@ -479,6 +481,8 @@ void GLReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &secondar
     uboParams.color = Vec4f(0.2f, 0.2f, 1.0f, 1.0f);
 
     Matrix4f mvpMat = projMat.Mul(camMat);
+    if(!cfg.position.unproject)
+      mvpMat = mvpMat.Mul(axisMapMat);
 
     uboParams.mvp = mvpMat;
 
@@ -589,7 +593,7 @@ void GLReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &secondar
       if(cfg.position.unproject)
         ModelViewProj = projMat.Mul(camMat.Mul(guessProjInv));
       else
-        ModelViewProj = projMat.Mul(camMat);
+        ModelViewProj = projMat.Mul(camMat.Mul(axisMapMat));
 
       uboParams.homogenousInput = cfg.position.unproject;
 

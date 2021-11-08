@@ -129,6 +129,12 @@ struct MeshDisplay
 )");
   ICamera *cam = NULL;
 
+  DOCUMENT(R"(The axis mapping to apply to the mesh.
+
+:type: AxisMapping
+)");
+  AxisMapping axisMapping;
+
   DOCUMENT(
       "``True`` if the projection matrix to use when unprojecting vertex positions is "
       "orthographic.");

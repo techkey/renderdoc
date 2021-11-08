@@ -185,6 +185,7 @@ ShaderViewer::ShaderViewer(ICaptureContext &ctx, QWidget *parent)
     QAction *mip = new QAction(tr("Selected Mip Global"), this);
     QAction *slice = new QAction(tr("Selected Array Slice / Cubemap Face Global"), this);
     QAction *sample = new QAction(tr("Selected Sample Global"), this);
+    QAction *range = new QAction(tr("Selected TextureViewer Range Global"), this);
     QAction *type = new QAction(tr("Texture Type Global"), this);
     QAction *samplers = new QAction(tr("Point && Linear Samplers"), this);
     QAction *resources = new QAction(tr("Texture Resources"), this);
@@ -193,6 +194,7 @@ ShaderViewer::ShaderViewer(ICaptureContext &ctx, QWidget *parent)
     snippetsMenu->addAction(mip);
     snippetsMenu->addAction(slice);
     snippetsMenu->addAction(sample);
+    snippetsMenu->addAction(range);
     snippetsMenu->addAction(type);
     snippetsMenu->addSeparator();
     snippetsMenu->addAction(samplers);
@@ -202,8 +204,10 @@ ShaderViewer::ShaderViewer(ICaptureContext &ctx, QWidget *parent)
     QObject::connect(mip, &QAction::triggered, this, &ShaderViewer::snippet_selectedMip);
     QObject::connect(slice, &QAction::triggered, this, &ShaderViewer::snippet_selectedSlice);
     QObject::connect(sample, &QAction::triggered, this, &ShaderViewer::snippet_selectedSample);
+    QObject::connect(range, &QAction::triggered, this, &ShaderViewer::snippet_selectedRange);
     QObject::connect(type, &QAction::triggered, this, &ShaderViewer::snippet_selectedType);
     QObject::connect(samplers, &QAction::triggered, this, &ShaderViewer::snippet_samplers);
+    QObject::connect(resources, &QAction::triggered, this, &ShaderViewer::snippet_resources);
     QObject::connect(resources, &QAction::triggered, this, &ShaderViewer::snippet_resources);
 
     ui->snippets->setMenu(snippetsMenu);
@@ -322,6 +326,7 @@ void ShaderViewer::editShader(ResourceId id, ShaderStage stage, const QString &e
 
     QWidget *w = (QWidget *)scintilla;
     w->setProperty("filename", kv.first);
+    w->setProperty("origText", kv.second);
 
     if(text.contains(entryPoint))
       sel = scintilla;
@@ -526,6 +531,9 @@ void ShaderViewer::debugShader(const ShaderBindpointMapping *bind, const ShaderR
 
   // hide edit buttons
   ui->refresh->hide();
+  ui->unrefresh->hide();
+  ui->resetEdits->hide();
+  ui->editStatusLabel->hide();
   ui->snippets->hide();
   ui->editSep->hide();
 
@@ -542,10 +550,10 @@ void ShaderViewer::debugShader(const ShaderBindpointMapping *bind, const ShaderR
       ui->floatView->hide();
     }
 
-    if(m_ShaderDetails->debugInfo.files.isEmpty())
+    if(!m_ShaderDetails->debugInfo.sourceDebugInformation)
     {
       ui->debugToggle->setEnabled(false);
-      ui->debugToggle->setText(tr("Source Unavailable"));
+      ui->debugToggle->setText(tr("Source debugging Unavailable"));
     }
 
     ui->debugVars->setColumns({tr("Name"), tr("Value")});
@@ -1130,7 +1138,7 @@ void ShaderViewer::gotoDisassemblyDebugging()
 
 ShaderViewer *ShaderViewer::LoadEditor(ICaptureContext &ctx, QVariantMap data,
                                        IShaderViewer::SaveCallback saveCallback,
-                                       IShaderViewer::CloseCallback closeCallback,
+                                       IShaderViewer::RevertCallback revertCallback,
                                        ModifyCallback modifyCallback, QWidget *parent)
 {
   if(data.isEmpty())
@@ -1181,7 +1189,7 @@ ShaderViewer *ShaderViewer::LoadEditor(ICaptureContext &ctx, QVariantMap data,
   }
 
   ShaderViewer *view = EditShader(ctx, id, stage, entryPoint, files, encoding, flags, saveCallback,
-                                  closeCallback, modifyCallback, parent);
+                                  revertCallback, modifyCallback, parent);
 
   int toolIndex = -1;
 
@@ -1266,8 +1274,8 @@ ShaderViewer::~ShaderViewer()
 
   m_Ctx.Replay().AsyncInvoke([trace](IReplayController *r) { r->FreeTrace(trace); });
 
-  if(m_CloseCallback)
-    m_CloseCallback(&m_Ctx, this, m_EditingShader);
+  if(m_RevertCallback)
+    m_RevertCallback(&m_Ctx, this, m_EditingShader);
 
   if(m_ModifyCallback)
     m_ModifyCallback(this, true);
@@ -2645,12 +2653,35 @@ bool ShaderViewer::getVar(RDTreeWidgetItem *item, ShaderVariable *var, QString *
   }
 }
 
-void ShaderViewer::setEditorWindowTitle()
+void ShaderViewer::updateEditState()
 {
   if(m_EditingShader != ResourceId())
   {
-    if(!m_Ctx.IsResourceReplaced(m_EditingShader))
-      m_Modified = true;
+    QString statusString, statusTooltip;
+
+    // check if the shader is replaced and update the status
+    if(m_Ctx.IsResourceReplaced(m_EditingShader))
+    {
+      statusString = tr("Status: Edited Shader Active");
+      statusTooltip = tr("The replay currently has the original shader active");
+    }
+    else
+    {
+      statusString = tr("Status: Original Shader Active");
+      statusTooltip = tr("The replay currently has an edited version of the shader active");
+
+      // if we expected it to be saved something went wrong
+      if(m_Saved)
+      {
+        // we're still 'modified' as in have unsaved changes
+        m_Modified = true;
+
+        statusTooltip.append(tr("\n\nSomething went wrong applying changes."));
+      }
+    }
+
+    ui->editStatusLabel->setText(statusString);
+    ui->editStatusLabel->setToolTip(statusTooltip);
 
     if(m_Modified)
     {
@@ -4257,7 +4288,7 @@ void ShaderViewer::ShowErrors(const rdcstr &errors)
       ToolWindowManager::raiseToolWindow(m_Errors);
   }
 
-  setEditorWindowTitle();
+  updateEditState();
 }
 
 void ShaderViewer::AddWatch(const rdcstr &variable)
@@ -4336,6 +4367,8 @@ layout(binding = 0, std140) uniform RENDERDOC_Uniforms
     int SelectedSample;
     uvec4 YUVDownsampleRate;
     uvec4 YUVAChannels;
+    float SelectedRangeMin;
+    float SelectedRangeMax;
 } RENDERDOC;
 
 #define RENDERDOC_TexDim RENDERDOC.TexDim
@@ -4345,6 +4378,8 @@ layout(binding = 0, std140) uniform RENDERDOC_Uniforms
 #define RENDERDOC_SelectedSample RENDERDOC.SelectedSample
 #define RENDERDOC_YUVDownsampleRate RENDERDOC.YUVDownsampleRate
 #define RENDERDOC_YUVAChannels RENDERDOC.YUVAChannels
+#define RENDERDOC_SelectedRangeMin RENDERDOC.SelectedRangeMin
+#define RENDERDOC_SelectedRangeMax RENDERDOC.SelectedRangeMax
 
 )");
   }
@@ -4360,6 +4395,8 @@ cbuffer RENDERDOC_Constants : register(b0)
     int RENDERDOC_SelectedSample;
     uint4 RENDERDOC_YUVDownsampleRate;
     uint4 RENDERDOC_YUVAChannels;
+    float RENDERDOC_SelectedRangeMin;
+    float RENDERDOC_SelectedRangeMax;
 };
 
 )");
@@ -4503,6 +4540,43 @@ int RENDERDOC_SelectedSample;
     text = lit(R"(
 // selected MSAA sample or -numSamples for resolve. See docs
 uniform int RENDERDOC_SelectedSample;
+
+)");
+  }
+  else if(encoding == ShaderEncoding::SPIRVAsm)
+  {
+    text = lit("; Can't insert snippets for SPIR-V ASM");
+  }
+
+  insertSnippet(text);
+}
+
+void ShaderViewer::snippet_selectedRange()
+{
+  ShaderEncoding encoding = currentEncoding();
+  GraphicsAPI api = m_Ctx.APIProps().localRenderer;
+
+  QString text;
+
+  if(api == GraphicsAPI::Vulkan)
+  {
+    text = vulkanUBO();
+  }
+  else if(encoding == ShaderEncoding::HLSL)
+  {
+    text = lit(R"(
+// selected range min/max in UI
+float RENDERDOC_SelectedRangeMin;
+float RENDERDOC_SelectedRangeMax;
+
+)");
+  }
+  else if(encoding == ShaderEncoding::GLSL)
+  {
+    text = lit(R"(
+// selected range minmax in UI
+float RENDERDOC_SelectedRangeMin;
+float RENDERDOC_SelectedRangeMax;
 
 )");
   }
@@ -4760,7 +4834,7 @@ void ShaderViewer::MarkModification()
 
   m_Modified = true;
 
-  setEditorWindowTitle();
+  updateEditState();
 }
 
 void ShaderViewer::disasm_tooltipShow(int x, int y)
@@ -5095,6 +5169,41 @@ bool ShaderViewer::ProcessIncludeDirectives(QString &source, const rdcstrpairs &
   return true;
 }
 
+void ShaderViewer::on_resetEdits_clicked()
+{
+  QMessageBox::StandardButton res = RDDialog::question(
+      this, tr("Are you sure?"), tr("Are you sure you want to reset all edits and restore the "
+                                    "shader source back to the original?"),
+      QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+
+  if(res != QMessageBox::Yes)
+    return;
+
+  for(ScintillaEdit *s : m_Scintillas)
+  {
+    QWidget *w = (QWidget *)s;
+    s->selectAll();
+    s->replaceSel(w->property("origText").toString().toUtf8().data());
+  }
+
+  m_RevertCallback(&m_Ctx, this, m_EditingShader);
+
+  m_Modified = false;
+  m_Saved = false;
+
+  updateEditState();
+}
+
+void ShaderViewer::on_unrefresh_clicked()
+{
+  m_RevertCallback(&m_Ctx, this, m_EditingShader);
+
+  m_Modified = true;
+  m_Saved = false;
+
+  updateEditState();
+}
+
 void ShaderViewer::on_refresh_clicked()
 {
   if(m_Trace)
@@ -5133,6 +5242,8 @@ void ShaderViewer::on_refresh_clicked()
       if(!success)
         return;
     }
+
+    m_Saved = true;
 
     bytebuf shaderBytes(source.toUtf8());
 

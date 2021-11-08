@@ -871,6 +871,7 @@ enum VendorCheckEnum
   VendorCheck_AMD_copy_compressed_cubemaps,
   VendorCheck_AMD_vertex_array_elem_buffer_query,
   VendorCheck_Qualcomm_avoid_glCopyImageSubData,
+  VendorCheck_Qualcomm_emulate_cube_reads,
   VendorCheck_Count,
 };
 extern bool VendorCheck[VendorCheck_Count];

@@ -407,6 +407,9 @@ private:
   bool m_SeparateDepthStencil = false;
   bool m_NULLDescriptorsAllowed = false;
   bool m_ExtendedDynState = false;
+  bool m_ExtendedDynState2 = false;
+  bool m_DynColorWrite = false;
+  bool m_DynVertexInput = false;
 
   PFN_vkSetDeviceLoaderData m_SetDeviceLoaderData;
 
@@ -953,12 +956,9 @@ private:
   void AddEvent();
 
   void AddUsage(VulkanActionTreeNode &actionNode, rdcarray<DebugMessage> &debugMessages);
-  void AddFramebufferUsage(VulkanActionTreeNode &actionNode, ResourceId renderPass,
-                           ResourceId framebuffer, uint32_t subpass,
-                           const rdcarray<ResourceId> &fbattachments);
-  void AddFramebufferUsageAllChildren(VulkanActionTreeNode &actionNode, ResourceId renderPass,
-                                      ResourceId framebuffer, uint32_t subpass,
-                                      const rdcarray<ResourceId> &fbattachments);
+  void AddFramebufferUsage(VulkanActionTreeNode &actionNode, const VulkanRenderState &renderState);
+  void AddFramebufferUsageAllChildren(VulkanActionTreeNode &actionNode,
+                                      const VulkanRenderState &renderState);
 
   // no copy semantics
   WrappedVulkan(const WrappedVulkan &);
@@ -1122,6 +1122,9 @@ public:
   bool SeparateDepthStencil() const { return m_SeparateDepthStencil; }
   bool NULLDescriptorsAllowed() const { return m_NULLDescriptorsAllowed; }
   bool ExtendedDynamicState() const { return m_ExtendedDynState; }
+  bool ExtendedDynamicState2() const { return m_ExtendedDynState2; }
+  bool DynamicColorWrite() const { return m_DynColorWrite; }
+  bool DynamicVertexInput() const { return m_DynVertexInput; }
   VulkanRenderState &GetRenderState() { return m_RenderState; }
   void SetActionCB(VulkanActionCallback *cb) { m_ActionCallback = cb; }
   void SetSubmitChain(void *submitChain) { m_SubmitChain = submitChain; }
@@ -2454,4 +2457,57 @@ public:
 
   IMPLEMENT_FUNCTION_SERIALISED(VkResult, vkQueueSubmit2KHR, VkQueue queue, uint32_t submitCount,
                                 const VkSubmitInfo2KHR *pSubmits, VkFence fence);
+
+  // VK_KHR_present_wait
+
+  IMPLEMENT_FUNCTION_SERIALISED(VkResult, vkWaitForPresentKHR, VkDevice device,
+                                VkSwapchainKHR swapchain, uint64_t presentId, uint64_t timeout);
+
+  // VK_KHR_maintenance4
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkGetDeviceBufferMemoryRequirementsKHR, VkDevice device,
+                                const VkDeviceBufferMemoryRequirementsKHR *pInfo,
+                                VkMemoryRequirements2 *pMemoryRequirements);
+
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkGetDeviceImageMemoryRequirementsKHR, VkDevice device,
+                                const VkDeviceImageMemoryRequirementsKHR *pInfo,
+                                VkMemoryRequirements2 *pMemoryRequirements);
+
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkGetDeviceImageSparseMemoryRequirementsKHR, VkDevice device,
+                                const VkDeviceImageMemoryRequirementsKHR *pInfo,
+                                uint32_t *pSparseMemoryRequirementCount,
+                                VkSparseImageMemoryRequirements2 *pSparseMemoryRequirements);
+
+  // VK_EXT_color_write_enable
+
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkCmdSetColorWriteEnableEXT, VkCommandBuffer commandBuffer,
+                                uint32_t attachmentCount, const VkBool32 *pColorWriteEnables);
+
+  // VK_EXT_extended_dynamic_state2
+
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkCmdSetDepthBiasEnableEXT, VkCommandBuffer commandBuffer,
+                                VkBool32 depthBiasEnable);
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkCmdSetLogicOpEXT, VkCommandBuffer commandBuffer,
+                                VkLogicOp logicOp);
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkCmdSetPatchControlPointsEXT, VkCommandBuffer commandBuffer,
+                                uint32_t patchControlPoints);
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkCmdSetPrimitiveRestartEnableEXT,
+                                VkCommandBuffer commandBuffer, VkBool32 primitiveRestartEnable);
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkCmdSetRasterizerDiscardEnableEXT,
+                                VkCommandBuffer commandBuffer, VkBool32 rasterizerDiscardEnable);
+
+  // VK_EXT_vertex_input_dynamic_state
+
+  IMPLEMENT_FUNCTION_SERIALISED(
+      void, vkCmdSetVertexInputEXT, VkCommandBuffer commandBuffer,
+      uint32_t vertexBindingDescriptionCount,
+      const VkVertexInputBindingDescription2EXT *pVertexBindingDescriptions,
+      uint32_t vertexAttributeDescriptionCount,
+      const VkVertexInputAttributeDescription2EXT *pVertexAttributeDescriptions);
+
+  // VK_KHR_dynamic_rendering
+
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkCmdBeginRenderingKHR, VkCommandBuffer commandBuffer,
+                                const VkRenderingInfoKHR *pRenderingInfo);
+
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkCmdEndRenderingKHR, VkCommandBuffer commandBuffer);
 };

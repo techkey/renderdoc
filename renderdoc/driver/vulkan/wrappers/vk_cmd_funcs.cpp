@@ -37,6 +37,7 @@ static rdcstr ToHumanStr(const VkAttachmentLoadOp &el)
     case VK_ATTACHMENT_LOAD_OP_LOAD: return "Load";
     case VK_ATTACHMENT_LOAD_OP_CLEAR: return "Clear";
     case VK_ATTACHMENT_LOAD_OP_DONT_CARE: return "Don't Care";
+    case VK_ATTACHMENT_LOAD_OP_NONE_EXT: return "None";
   }
   END_ENUM_STRINGISE();
 }
@@ -47,13 +48,14 @@ static rdcstr ToHumanStr(const VkAttachmentStoreOp &el)
   {
     case VK_ATTACHMENT_STORE_OP_STORE: return "Store";
     case VK_ATTACHMENT_STORE_OP_DONT_CARE: return "Don't Care";
+    case VK_ATTACHMENT_STORE_OP_NONE_EXT: return "None";
   }
   END_ENUM_STRINGISE();
 }
 
 void WrappedVulkan::AddImplicitResolveResourceUsage(uint32_t subpass)
 {
-  ResourceId rp = m_BakedCmdBufferInfo[m_LastCmdBufferID].state.renderPass;
+  ResourceId rp = m_BakedCmdBufferInfo[m_LastCmdBufferID].state.GetRenderPass();
   const VulkanCreationInfo::RenderPass &rpinfo = m_CreationInfo.m_RenderPass[rp];
 
   // Ending a render pass instance performs any multisample operations
@@ -104,14 +106,14 @@ rdcarray<VkImageMemoryBarrier> WrappedVulkan::GetImplicitRenderPassBarriers(uint
 
   if(m_LastCmdBufferID == ResourceId())
   {
-    rp = m_RenderState.renderPass;
+    rp = m_RenderState.GetRenderPass();
     fb = m_RenderState.GetFramebuffer();
     fbattachments = m_RenderState.GetFramebufferAttachments();
   }
   else
   {
     const VulkanRenderState &renderstate = GetCmdRenderState();
-    rp = renderstate.renderPass;
+    rp = renderstate.GetRenderPass();
     fb = renderstate.GetFramebuffer();
     fbattachments = renderstate.GetFramebufferAttachments();
   }
@@ -330,10 +332,113 @@ rdcstr WrappedVulkan::MakeRenderPassOpString(bool store)
 {
   rdcstr opDesc = "";
 
-  const VulkanCreationInfo::RenderPass &info =
-      m_CreationInfo.m_RenderPass[m_BakedCmdBufferInfo[m_LastCmdBufferID].state.renderPass];
+  const VulkanRenderState &state = m_BakedCmdBufferInfo[m_LastCmdBufferID].state;
+
+  if(state.dynamicRendering.active)
+  {
+    const VulkanRenderState::DynamicRendering &dyn = state.dynamicRendering;
+
+    if(dyn.color.empty() && dyn.depth.imageView == VK_NULL_HANDLE &&
+       dyn.stencil.imageView == VK_NULL_HANDLE)
+    {
+      opDesc = "-";
+    }
+    else
+    {
+      bool colsame = true;
+      for(size_t i = 1; i < dyn.color.size(); i++)
+      {
+        if(store)
+        {
+          if(dyn.color[i].storeOp != dyn.color[0].storeOp)
+            colsame = false;
+        }
+        else
+        {
+          if(dyn.color[i].loadOp != dyn.color[0].loadOp)
+            colsame = false;
+        }
+      }
+
+      // handle depth only passes
+      if(dyn.color.empty())
+      {
+      }
+      else if(!colsame)
+      {
+        // if we have different storage for the colour, don't display
+        // the full details
+
+        opDesc = store ? "Different store ops" : "Different load ops";
+      }
+      else
+      {
+        // all colour ops are the same, print it
+        opDesc = store ? ToHumanStr(dyn.color[0].storeOp) : ToHumanStr(dyn.color[0].loadOp);
+      }
+
+      // do we have depth?
+      if(dyn.depth.imageView != VK_NULL_HANDLE || dyn.stencil.imageView != VK_NULL_HANDLE)
+      {
+        // could be empty if this is a depth-only pass
+        if(!opDesc.empty())
+          opDesc = "C=" + opDesc + ", ";
+
+        // if there's no stencil, just print depth op
+        if(dyn.stencil.imageView == VK_NULL_HANDLE)
+        {
+          opDesc += "D=" + (store ? ToHumanStr(dyn.depth.storeOp) : ToHumanStr(dyn.depth.loadOp));
+        }
+        // same for stencil-only
+        else if(dyn.depth.imageView == VK_NULL_HANDLE)
+        {
+          opDesc += "S=" + (store ? ToHumanStr(dyn.stencil.storeOp) : ToHumanStr(dyn.stencil.loadOp));
+        }
+        else
+        {
+          if(store)
+          {
+            // if depth and stencil have same op, print together, otherwise separately
+            if(dyn.depth.storeOp == dyn.stencil.storeOp)
+              opDesc += "DS=" + ToHumanStr(dyn.depth.storeOp);
+            else
+              opDesc +=
+                  "D=" + ToHumanStr(dyn.depth.storeOp) + ", S=" + ToHumanStr(dyn.stencil.storeOp);
+          }
+          else
+          {
+            // if depth and stencil have same op, print together, otherwise separately
+            if(dyn.depth.loadOp == dyn.stencil.loadOp)
+              opDesc += "DS=" + ToHumanStr(dyn.depth.loadOp);
+            else
+              opDesc += "D=" + ToHumanStr(dyn.depth.loadOp) + ", S=" + ToHumanStr(dyn.stencil.loadOp);
+          }
+        }
+      }
+    }
+
+    // prepend suspend/resume info
+    if(!store && (dyn.flags & VK_RENDERING_RESUMING_BIT_KHR))
+    {
+      if(opDesc.empty())
+        opDesc = "Resume";
+      else
+        opDesc = "Resume, " + opDesc;
+    }
+    else if(store && (dyn.flags & VK_RENDERING_SUSPENDING_BIT_KHR))
+    {
+      if(opDesc.empty())
+        opDesc = "Suspend";
+      else
+        opDesc = "Suspend, " + opDesc;
+    }
+
+    return opDesc;
+  }
+
+  const VulkanCreationInfo::RenderPass &info = m_CreationInfo.m_RenderPass[state.GetRenderPass()];
   const VulkanCreationInfo::Framebuffer &fbinfo =
-      m_CreationInfo.m_Framebuffer[m_BakedCmdBufferInfo[m_LastCmdBufferID].state.GetFramebuffer()];
+      m_CreationInfo.m_Framebuffer[state.GetFramebuffer()];
 
   const rdcarray<VulkanCreationInfo::RenderPass::Attachment> &atts = info.attachments;
 
@@ -345,7 +450,7 @@ rdcstr WrappedVulkan::MakeRenderPassOpString(bool store)
   {
     bool colsame = true;
 
-    uint32_t subpass = m_BakedCmdBufferInfo[m_LastCmdBufferID].state.subpass;
+    uint32_t subpass = state.subpass;
 
     // find which attachment is the depth-stencil one
     int32_t dsAttach = info.subpasses[subpass].depthstencilAttachment;
@@ -911,8 +1016,8 @@ bool WrappedVulkan::Serialise_vkBeginCommandBuffer(SerialiserType &ser, VkComman
           BeginInfo.flags |= VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 
           if(BeginInfo.pInheritanceInfo->renderPass != VK_NULL_HANDLE)
-            m_BakedCmdBufferInfo[BakedCommandBuffer].state.renderPass =
-                GetResID(BeginInfo.pInheritanceInfo->renderPass);
+            m_BakedCmdBufferInfo[BakedCommandBuffer].state.SetRenderPass(
+                GetResID(BeginInfo.pInheritanceInfo->renderPass));
           if(BeginInfo.pInheritanceInfo->framebuffer != VK_NULL_HANDLE)
             m_BakedCmdBufferInfo[BakedCommandBuffer].state.SetFramebuffer(
                 this, GetResID(BeginInfo.pInheritanceInfo->framebuffer));
@@ -1132,59 +1237,145 @@ bool WrappedVulkan::Serialise_vkEndCommandBuffer(SerialiserType &ser, VkCommandB
         if(m_Partial[Primary].partialParent == BakedCommandBuffer &&
            m_Partial[Primary].renderPassActive)
         {
-          uint32_t numSubpasses =
-              (uint32_t)m_CreationInfo.m_RenderPass[renderstate.renderPass].subpasses.size();
-
-          // for each subpass we skip, and for the finalLayout transition at the end of the
-          // renderpass, record these barriers. These are executed implicitly but because we want to
-          // pretend they never happened, we then reverse their effects so that our layout tracking
-          // is accurate and the images end up in the layout they were in during the last active
-          // subpass
-          rdcflatmap<ResourceId, ImageState> renderPassEndStates;
-
-          for(uint32_t sub = renderstate.subpass + 1; sub < numSubpasses; sub++)
+          if(renderstate.dynamicRendering.active)
           {
-            ObjDisp(commandBuffer)->CmdNextSubpass(Unwrap(commandBuffer), VK_SUBPASS_CONTENTS_INLINE);
+            // there are two ways dynamic rendering can be active in a partial command buffer -
+            // either if it's suspended, for which we need to resume and then end without
+            // suspending. Or if we were partial way in and never saw the end, in which case we need
+            // to end and then check if that end itself was a suspend, and do a resume/full end.
 
-            rdcarray<VkImageMemoryBarrier> subpassBarriers = GetImplicitRenderPassBarriers();
+            bool suspended = renderstate.dynamicRendering.suspended;
+
+            // if we're not suspended, we were inside an active begin/end pair, so end it
+            if(!suspended)
+            {
+              ObjDisp(commandBuffer)->CmdEndRenderingKHR(Unwrap(commandBuffer));
+
+              // now update the suspended state depending on what was declared when we began
+              suspended = (renderstate.dynamicRendering.flags & VK_RENDERING_SUSPENDING_BIT_KHR) != 0;
+            }
+
+            // if we were suspended, or are now suspended after that end, do a quick resume & end
+            if(suspended)
+            {
+              VkRenderingInfoKHR info = {};
+              info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
+
+              // resume but don't suspend - end for real
+              info.flags = renderstate.dynamicRendering.flags &
+                           ~(VK_RENDERING_RESUMING_BIT_KHR | VK_RENDERING_SUSPENDING_BIT_KHR);
+              info.flags |= VK_RENDERING_RESUMING_BIT_KHR;
+
+              info.layerCount = renderstate.dynamicRendering.layerCount;
+              info.renderArea = renderstate.renderArea;
+              info.viewMask = renderstate.dynamicRendering.viewMask;
+
+              info.pDepthAttachment = &renderstate.dynamicRendering.depth;
+              if(renderstate.dynamicRendering.depth.imageLayout == VK_IMAGE_LAYOUT_UNDEFINED)
+                info.pDepthAttachment = NULL;
+              info.pStencilAttachment = &renderstate.dynamicRendering.stencil;
+              if(renderstate.dynamicRendering.stencil.imageLayout == VK_IMAGE_LAYOUT_UNDEFINED)
+                info.pStencilAttachment = NULL;
+
+              info.colorAttachmentCount = (uint32_t)renderstate.dynamicRendering.color.size();
+              info.pColorAttachments = renderstate.dynamicRendering.color.data();
+
+              VkRenderingFragmentDensityMapAttachmentInfoEXT fragmentDensity = {
+                  VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_INFO_EXT, NULL,
+                  renderstate.dynamicRendering.fragmentDensityView,
+                  renderstate.dynamicRendering.fragmentDensityLayout,
+              };
+
+              if(renderstate.dynamicRendering.fragmentDensityView != VK_NULL_HANDLE)
+                info.pNext = &fragmentDensity;
+
+              byte *tempMem = GetTempMemory(GetNextPatchSize(&info));
+              VkRenderingInfoKHR *unwrappedInfo = UnwrapStructAndChain(m_State, tempMem, &info);
+
+              // do the same load/store patching as normal here too
+              if(m_ReplayOptions.optimisation != ReplayOptimisationLevel::Fastest)
+              {
+                for(uint32_t i = 0; i < unwrappedInfo->colorAttachmentCount + 2; i++)
+                {
+                  VkRenderingAttachmentInfoKHR *att =
+                      (VkRenderingAttachmentInfoKHR *)unwrappedInfo->pColorAttachments + i;
+
+                  if(i == unwrappedInfo->colorAttachmentCount)
+                    att = (VkRenderingAttachmentInfoKHR *)unwrappedInfo->pDepthAttachment;
+                  else if(i == unwrappedInfo->colorAttachmentCount + 1)
+                    att = (VkRenderingAttachmentInfoKHR *)unwrappedInfo->pStencilAttachment;
+
+                  if(!att)
+                    continue;
+
+                  if(att->storeOp != VK_ATTACHMENT_STORE_OP_NONE_EXT)
+                    att->storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+                  if(att->loadOp == VK_ATTACHMENT_LOAD_OP_DONT_CARE)
+                    att->loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                }
+              }
+
+              ObjDisp(commandBuffer)->CmdBeginRenderingKHR(Unwrap(commandBuffer), unwrappedInfo);
+              ObjDisp(commandBuffer)->CmdEndRenderingKHR(Unwrap(commandBuffer));
+            }
+          }
+          else
+          {
+            uint32_t numSubpasses =
+                (uint32_t)m_CreationInfo.m_RenderPass[renderstate.GetRenderPass()].subpasses.size();
+
+            // for each subpass we skip, and for the finalLayout transition at the end of the
+            // renderpass, record these barriers. These are executed implicitly but because we want
+            // to pretend they never happened, we then reverse their effects so that our layout
+            // tracking is accurate and the images end up in the layout they were in during the last
+            // active subpass
+            rdcflatmap<ResourceId, ImageState> renderPassEndStates;
+
+            for(uint32_t sub = renderstate.subpass + 1; sub < numSubpasses; sub++)
+            {
+              ObjDisp(commandBuffer)->CmdNextSubpass(Unwrap(commandBuffer), VK_SUBPASS_CONTENTS_INLINE);
+
+              rdcarray<VkImageMemoryBarrier> subpassBarriers = GetImplicitRenderPassBarriers();
+
+              GetResourceManager()->RecordBarriers(
+                  renderPassEndStates, FindCommandQueueFamily(m_LastCmdBufferID),
+                  (uint32_t)subpassBarriers.size(), subpassBarriers.data());
+            }
+
+            rdcarray<VkImageMemoryBarrier> finalBarriers = GetImplicitRenderPassBarriers(~0U);
 
             GetResourceManager()->RecordBarriers(
                 renderPassEndStates, FindCommandQueueFamily(m_LastCmdBufferID),
-                (uint32_t)subpassBarriers.size(), subpassBarriers.data());
-          }
+                (uint32_t)finalBarriers.size(), finalBarriers.data());
 
-          rdcarray<VkImageMemoryBarrier> finalBarriers = GetImplicitRenderPassBarriers(~0U);
+            ObjDisp(commandBuffer)->CmdEndRenderPass(Unwrap(commandBuffer));
 
-          GetResourceManager()->RecordBarriers(renderPassEndStates,
-                                               FindCommandQueueFamily(m_LastCmdBufferID),
-                                               (uint32_t)finalBarriers.size(), finalBarriers.data());
+            // undo any implicit transitions we just went through, so that we can pretend that the
+            // image stayed in the same layout as it was when we stopped partially replaying.
 
-          ObjDisp(commandBuffer)->CmdEndRenderPass(Unwrap(commandBuffer));
-
-          // undo any implicit transitions we just went through, so that we can pretend that the
-          // image stayed in the same layout as it was when we stopped partially replaying.
-
-          for(auto it = renderPassEndStates.begin(); it != renderPassEndStates.end(); ++it)
-          {
-            ResourceId id = it->first;
-            ImageState &endState = it->second;
-            endState.SetOverlay();
-            LockedConstImageStateRef current = FindConstImageState(id);
-            if(!current)
+            for(auto it = renderPassEndStates.begin(); it != renderPassEndStates.end(); ++it)
             {
-              RDCERR("Unknown image %s", ToStr(id).c_str());
-            }
-            else
-            {
-              ImageBarrierSequence barriers;
-              endState.Transition(*current, VK_ACCESS_ALL_WRITE_BITS, VK_ACCESS_ALL_READ_BITS,
-                                  barriers, GetImageTransitionInfo());
-              InlineCleanupImageBarriers(commandBuffer, barriers);
-              if(!barriers.empty())
+              ResourceId id = it->first;
+              ImageState &endState = it->second;
+              endState.SetOverlay();
+              LockedConstImageStateRef current = FindConstImageState(id);
+              if(!current)
               {
-                // This should not happen, because the cleanup barriers are just image layout
-                // transitions, no queue family transitions
-                RDCERR("Partial RenderPass replay cleanup barriers could not all be inlined");
+                RDCERR("Unknown image %s", ToStr(id).c_str());
+              }
+              else
+              {
+                ImageBarrierSequence barriers;
+                endState.Transition(*current, VK_ACCESS_ALL_WRITE_BITS, VK_ACCESS_ALL_READ_BITS,
+                                    barriers, GetImageTransitionInfo());
+                InlineCleanupImageBarriers(commandBuffer, barriers);
+                if(!barriers.empty())
+                {
+                  // This should not happen, because the cleanup barriers are just image layout
+                  // transitions, no queue family transitions
+                  RDCERR("Partial RenderPass replay cleanup barriers could not all be inlined");
+                }
               }
             }
           }
@@ -1351,7 +1542,7 @@ bool WrappedVulkan::Serialise_vkCmdBeginRenderPass(SerialiserType &ser, VkComman
         {
           VulkanRenderState &renderstate = GetCmdRenderState();
           renderstate.subpass = 0;
-          renderstate.renderPass = GetResID(RenderPassBegin.renderPass);
+          renderstate.SetRenderPass(GetResID(RenderPassBegin.renderPass));
           renderstate.renderArea = RenderPassBegin.renderArea;
           renderstate.subpassContents = contents;
 
@@ -1377,7 +1568,7 @@ bool WrappedVulkan::Serialise_vkCmdBeginRenderPass(SerialiserType &ser, VkComman
         }
 
         const VulkanCreationInfo::RenderPass &rpinfo =
-            m_CreationInfo.m_RenderPass[GetCmdRenderState().renderPass];
+            m_CreationInfo.m_RenderPass[GetCmdRenderState().GetRenderPass()];
 
         rdcarray<VkImageMemoryBarrier> imgBarriers = GetImplicitRenderPassBarriers();
 
@@ -1485,8 +1676,17 @@ bool WrappedVulkan::Serialise_vkCmdBeginRenderPass(SerialiserType &ser, VkComman
             if(att >= rpinfo.attachments.size())
               continue;
 
-            if(rpinfo.attachments[att].loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR ||
-               rpinfo.attachments[att].stencilLoadOp == VK_ATTACHMENT_LOAD_OP_CLEAR)
+            VkImageAspectFlags clearAspects = 0;
+
+            // loadOp governs color, and depth
+            if(rpinfo.attachments[att].loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR)
+              clearAspects |= VK_IMAGE_ASPECT_COLOR_BIT | VK_IMAGE_ASPECT_DEPTH_BIT;
+            // stencilLoadOp governs the stencil
+            if(rpinfo.attachments[att].stencilLoadOp == VK_ATTACHMENT_LOAD_OP_CLEAR)
+              clearAspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+
+            // if any aspect is set to clear, go check it in more detail
+            if(clearAspects != 0)
             {
               VulkanCreationInfo::ImageView viewinfo = m_CreationInfo.m_ImageView[fbattachments[att]];
 
@@ -1498,8 +1698,15 @@ bool WrappedVulkan::Serialise_vkCmdBeginRenderPass(SerialiserType &ser, VkComman
                 clear.clearValue = unwrappedInfo.pClearValues[att];
               else
                 RDCWARN("Missing clear value for attachment %u", att);
-              clearrects.push_back(rect);
-              clearatts.push_back(clear);
+
+              // check that the actual aspects in the attachment overlap with those being cleared.
+              // In particular this means we ignore stencil load op being CLEAR for a color
+              // attachment - that doesn't mean we should clear the color
+              if(clear.aspectMask & clearAspects)
+              {
+                clearrects.push_back(rect);
+                clearatts.push_back(clear);
+              }
             }
           }
 
@@ -1530,7 +1737,8 @@ bool WrappedVulkan::Serialise_vkCmdBeginRenderPass(SerialiserType &ser, VkComman
 
       // track while reading, for fetching the right set of outputs in AddAction
       m_BakedCmdBufferInfo[m_LastCmdBufferID].state.subpass = 0;
-      m_BakedCmdBufferInfo[m_LastCmdBufferID].state.renderPass = GetResID(RenderPassBegin.renderPass);
+      m_BakedCmdBufferInfo[m_LastCmdBufferID].state.SetRenderPass(
+          GetResID(RenderPassBegin.renderPass));
 
       ResourceId fb = GetResID(RenderPassBegin.framebuffer);
 
@@ -1662,7 +1870,8 @@ void WrappedVulkan::vkCmdBeginRenderPass(VkCommandBuffer commandBuffer,
 
       if(renderArea_covers_entire_framebuffer && framebuffer_reference_entire_attachment)
       {
-        if(rpInfo->loadOpTable[i] != VK_ATTACHMENT_LOAD_OP_LOAD)
+        if(rpInfo->loadOpTable[i] != VK_ATTACHMENT_LOAD_OP_LOAD &&
+           rpInfo->loadOpTable[i] != VK_ATTACHMENT_LOAD_OP_NONE_EXT)
         {
           refType = eFrameRef_CompleteWrite;
         }
@@ -1820,7 +2029,7 @@ bool WrappedVulkan::Serialise_vkCmdEndRenderPass(SerialiserType &ser, VkCommandB
         rdcarray<ResourceId> attachments;
         VkRect2D renderArea;
         const VulkanCreationInfo::RenderPass &rpinfo =
-            m_CreationInfo.m_RenderPass[GetCmdRenderState().renderPass];
+            m_CreationInfo.m_RenderPass[GetCmdRenderState().GetRenderPass()];
 
         {
           VulkanRenderState &renderstate = GetCmdRenderState();
@@ -1828,7 +2037,7 @@ bool WrappedVulkan::Serialise_vkCmdEndRenderPass(SerialiserType &ser, VkCommandB
           attachments = GetCmdRenderState().GetFramebufferAttachments();
           renderArea = GetCmdRenderState().renderArea;
 
-          renderstate.renderPass = ResourceId();
+          renderstate.SetRenderPass(ResourceId());
           renderstate.SetFramebuffer(ResourceId(), rdcarray<ResourceId>());
           renderstate.subpassContents = VK_SUBPASS_CONTENTS_MAX_ENUM;
         }
@@ -1896,7 +2105,7 @@ bool WrappedVulkan::Serialise_vkCmdEndRenderPass(SerialiserType &ser, VkCommandB
 
       // track while reading, reset this to empty so AddAction sets no outputs,
       // but only AFTER the above AddAction (we want it grouped together)
-      m_BakedCmdBufferInfo[m_LastCmdBufferID].state.renderPass = ResourceId();
+      m_BakedCmdBufferInfo[m_LastCmdBufferID].state.SetRenderPass(ResourceId());
       m_BakedCmdBufferInfo[m_LastCmdBufferID].state.SetFramebuffer(ResourceId(),
                                                                    rdcarray<ResourceId>());
     }
@@ -1978,7 +2187,7 @@ bool WrappedVulkan::Serialise_vkCmdBeginRenderPass2(SerialiserType &ser,
         {
           VulkanRenderState &renderstate = GetCmdRenderState();
           renderstate.subpass = 0;
-          renderstate.renderPass = GetResID(RenderPassBegin.renderPass);
+          renderstate.SetRenderPass(GetResID(RenderPassBegin.renderPass));
           renderstate.renderArea = RenderPassBegin.renderArea;
           renderstate.subpassContents = SubpassBegin.contents;
 
@@ -2004,7 +2213,7 @@ bool WrappedVulkan::Serialise_vkCmdBeginRenderPass2(SerialiserType &ser,
         }
 
         const VulkanCreationInfo::RenderPass &rpinfo =
-            m_CreationInfo.m_RenderPass[GetCmdRenderState().renderPass];
+            m_CreationInfo.m_RenderPass[GetCmdRenderState().GetRenderPass()];
 
         if(m_ReplayOptions.optimisation != ReplayOptimisationLevel::Fastest)
         {
@@ -2155,7 +2364,8 @@ bool WrappedVulkan::Serialise_vkCmdBeginRenderPass2(SerialiserType &ser,
 
       // track while reading, for fetching the right set of outputs in AddAction
       m_BakedCmdBufferInfo[m_LastCmdBufferID].state.subpass = 0;
-      m_BakedCmdBufferInfo[m_LastCmdBufferID].state.renderPass = GetResID(RenderPassBegin.renderPass);
+      m_BakedCmdBufferInfo[m_LastCmdBufferID].state.SetRenderPass(
+          GetResID(RenderPassBegin.renderPass));
 
       ResourceId fb = GetResID(RenderPassBegin.framebuffer);
 
@@ -2291,7 +2501,8 @@ void WrappedVulkan::vkCmdBeginRenderPass2(VkCommandBuffer commandBuffer,
 
       if(renderArea_covers_entire_framebuffer && framebuffer_reference_entire_attachment)
       {
-        if(rpInfo->loadOpTable[i] != VK_ATTACHMENT_LOAD_OP_LOAD)
+        if(rpInfo->loadOpTable[i] != VK_ATTACHMENT_LOAD_OP_LOAD &&
+           rpInfo->loadOpTable[i] != VK_ATTACHMENT_LOAD_OP_NONE_EXT)
         {
           refType = eFrameRef_CompleteWrite;
         }
@@ -2483,7 +2694,7 @@ bool WrappedVulkan::Serialise_vkCmdEndRenderPass2(SerialiserType &ser, VkCommand
         rdcarray<ResourceId> attachments;
         VkRect2D renderArea;
         const VulkanCreationInfo::RenderPass &rpinfo =
-            m_CreationInfo.m_RenderPass[GetCmdRenderState().renderPass];
+            m_CreationInfo.m_RenderPass[GetCmdRenderState().GetRenderPass()];
 
         {
           VulkanRenderState &renderstate = GetCmdRenderState();
@@ -2491,7 +2702,7 @@ bool WrappedVulkan::Serialise_vkCmdEndRenderPass2(SerialiserType &ser, VkCommand
           attachments = GetCmdRenderState().GetFramebufferAttachments();
           renderArea = GetCmdRenderState().renderArea;
 
-          renderstate.renderPass = ResourceId();
+          renderstate.SetRenderPass(ResourceId());
           renderstate.SetFramebuffer(ResourceId(), rdcarray<ResourceId>());
           renderstate.subpassContents = VK_SUBPASS_CONTENTS_MAX_ENUM;
         }
@@ -2554,7 +2765,7 @@ bool WrappedVulkan::Serialise_vkCmdEndRenderPass2(SerialiserType &ser, VkCommand
 
       // track while reading, reset this to empty so AddAction sets no outputs,
       // but only AFTER the above AddAction (we want it grouped together)
-      m_BakedCmdBufferInfo[m_LastCmdBufferID].state.renderPass = ResourceId();
+      m_BakedCmdBufferInfo[m_LastCmdBufferID].state.SetRenderPass(ResourceId());
       m_BakedCmdBufferInfo[m_LastCmdBufferID].state.SetFramebuffer(ResourceId(),
                                                                    rdcarray<ResourceId>());
     }
@@ -2752,10 +2963,63 @@ bool WrappedVulkan::Serialise_vkCmdBindPipeline(SerialiserType &ser, VkCommandBu
             }
             if(!pipeInfo.dynamicStates[VkDynamicVertexInputBindingStrideEXT])
             {
-              for(const VulkanCreationInfo::Pipeline::Binding &bind : pipeInfo.vertexBindings)
+              for(const VulkanCreationInfo::Pipeline::VertBinding &bind : pipeInfo.vertexBindings)
               {
                 renderstate.vbuffers.resize_for_index(bind.vbufferBinding);
                 renderstate.vbuffers[bind.vbufferBinding].stride = bind.bytestride;
+              }
+            }
+            if(!pipeInfo.dynamicStates[VkDynamicColorWriteEXT])
+            {
+              renderstate.colorWriteEnable.resize(pipeInfo.attachments.size());
+              for(size_t i = 0; i < renderstate.colorWriteEnable.size(); i++)
+                renderstate.colorWriteEnable[i] = pipeInfo.attachments[i].channelWriteMask != 0;
+            }
+            if(!pipeInfo.dynamicStates[VkDynamicDepthBiasEnableEXT])
+            {
+              renderstate.depthBiasEnable = pipeInfo.depthBiasEnable;
+            }
+            if(!pipeInfo.dynamicStates[VkDynamicLogicOpEXT])
+            {
+              renderstate.logicOp = pipeInfo.logicOp;
+            }
+            if(!pipeInfo.dynamicStates[VkDynamicControlPointsEXT])
+            {
+              renderstate.patchControlPoints = pipeInfo.patchControlPoints;
+            }
+            if(!pipeInfo.dynamicStates[VkDynamicPrimRestartEXT])
+            {
+              renderstate.primRestartEnable = pipeInfo.primitiveRestartEnable;
+            }
+            if(!pipeInfo.dynamicStates[VkDynamicRastDiscardEXT])
+            {
+              renderstate.rastDiscardEnable = pipeInfo.rasterizerDiscardEnable;
+            }
+            if(!pipeInfo.dynamicStates[VkDynamicVertexInputEXT])
+            {
+              renderstate.vertexAttributes.resize(pipeInfo.vertexAttrs.size());
+              for(size_t i = 0; i < renderstate.vertexAttributes.size(); i++)
+              {
+                renderstate.vertexAttributes[i].sType =
+                    VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT;
+                renderstate.vertexAttributes[i].pNext = NULL;
+                renderstate.vertexAttributes[i].format = pipeInfo.vertexAttrs[i].format;
+                renderstate.vertexAttributes[i].binding = pipeInfo.vertexAttrs[i].binding;
+                renderstate.vertexAttributes[i].offset = pipeInfo.vertexAttrs[i].byteoffset;
+                renderstate.vertexAttributes[i].location = pipeInfo.vertexAttrs[i].location;
+              }
+              renderstate.vertexBindings.resize(pipeInfo.vertexBindings.size());
+              for(size_t i = 0; i < renderstate.vertexBindings.size(); i++)
+              {
+                renderstate.vertexBindings[i].sType =
+                    VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT;
+                renderstate.vertexBindings[i].pNext = NULL;
+                renderstate.vertexBindings[i].binding = pipeInfo.vertexBindings[i].vbufferBinding;
+                renderstate.vertexBindings[i].inputRate = pipeInfo.vertexBindings[i].perInstance
+                                                              ? VK_VERTEX_INPUT_RATE_INSTANCE
+                                                              : VK_VERTEX_INPUT_RATE_VERTEX;
+                renderstate.vertexBindings[i].stride = pipeInfo.vertexBindings[i].bytestride;
+                renderstate.vertexBindings[i].divisor = pipeInfo.vertexBindings[i].instanceDivisor;
               }
             }
           }
@@ -3081,7 +3345,15 @@ bool WrappedVulkan::Serialise_vkCmdBindVertexBuffers2EXT(
             // if strides is NULL the pipeline bound must have had no dynamic state for stride and
             // so stride was filled out then, we leave it as-is.
             if(pStrides)
+            {
               renderstate.vbuffers[firstBinding + i].stride = pStrides[i];
+
+              // if we have dynamic vertex input data, update the strides. If we don't have any
+              // that's fine we can skip this, it means the application must provide a later
+              // vkCmdSetVertexInput which overrides anything we'd set here
+              if(firstBinding + i < renderstate.vertexBindings.size())
+                renderstate.vertexBindings[firstBinding + i].stride = (uint32_t)pStrides[i];
+            }
           }
         }
       }
@@ -4173,7 +4445,7 @@ bool WrappedVulkan::Serialise_vkCmdExecuteCommands(SerialiserType &ser, VkComman
       parentCmdBufInfo.curEventID++;
 
       // should we add framebuffer usage to the child draws.
-      bool framebufferUsage = parentCmdBufInfo.state.renderPass != ResourceId() &&
+      bool framebufferUsage = parentCmdBufInfo.state.GetRenderPass() != ResourceId() &&
                               parentCmdBufInfo.state.GetFramebuffer() != ResourceId();
 
       for(uint32_t c = 0; c < commandBufferCount; c++)
@@ -4195,7 +4467,7 @@ bool WrappedVulkan::Serialise_vkCmdExecuteCommands(SerialiserType &ser, VkComman
         AddAction(marker);
         parentCmdBufInfo.curEventID++;
 
-        if(m_BakedCmdBufferInfo[m_LastCmdBufferID].state.renderPass == ResourceId() &&
+        if(m_BakedCmdBufferInfo[m_LastCmdBufferID].state.GetRenderPass() == ResourceId() &&
            (cmdBufInfo.beginFlags & VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT))
         {
           AddDebugMessage(
@@ -4218,9 +4490,7 @@ bool WrappedVulkan::Serialise_vkCmdExecuteCommands(SerialiserType &ser, VkComman
           for(size_t i = 0; i < numChildren; i++)
           {
             AddFramebufferUsageAllChildren(
-                parentCmdBufInfo.action->children[total - numChildren + i],
-                parentCmdBufInfo.state.renderPass, parentCmdBufInfo.state.GetFramebuffer(),
-                parentCmdBufInfo.state.subpass, parentCmdBufInfo.state.GetFramebufferAttachments());
+                parentCmdBufInfo.action->children[total - numChildren + i], parentCmdBufInfo.state);
           }
         }
 
@@ -4311,7 +4581,7 @@ bool WrappedVulkan::Serialise_vkCmdExecuteCommands(SerialiserType &ser, VkComman
           ResourceId cmd = GetResourceManager()->GetOriginalID(GetResID(pCommandBuffers[c]));
 
           // propagate renderpass state
-          m_BakedCmdBufferInfo[cmd].state.renderPass = parentCmdBufInfo.state.renderPass;
+          m_BakedCmdBufferInfo[cmd].state.SetRenderPass(parentCmdBufInfo.state.GetRenderPass());
           m_BakedCmdBufferInfo[cmd].state.subpass = parentCmdBufInfo.state.subpass;
           m_BakedCmdBufferInfo[cmd].state.SetFramebuffer(
               parentCmdBufInfo.state.GetFramebuffer(),
@@ -6253,6 +6523,586 @@ void WrappedVulkan::vkCmdEndConditionalRenderingEXT(VkCommandBuffer commandBuffe
   }
 }
 
+template <typename SerialiserType>
+bool WrappedVulkan::Serialise_vkCmdSetVertexInputEXT(
+    SerialiserType &ser, VkCommandBuffer commandBuffer, uint32_t vertexBindingDescriptionCount,
+    const VkVertexInputBindingDescription2EXT *pVertexBindingDescriptions,
+    uint32_t vertexAttributeDescriptionCount,
+    const VkVertexInputAttributeDescription2EXT *pVertexAttributeDescriptions)
+{
+  SERIALISE_ELEMENT(commandBuffer);
+  SERIALISE_ELEMENT(vertexBindingDescriptionCount).Important();
+  SERIALISE_ELEMENT_ARRAY(pVertexBindingDescriptions, vertexBindingDescriptionCount);
+  SERIALISE_ELEMENT(vertexAttributeDescriptionCount).Important();
+  SERIALISE_ELEMENT_ARRAY(pVertexAttributeDescriptions, vertexAttributeDescriptionCount);
+
+  Serialise_DebugMessages(ser);
+
+  SERIALISE_CHECK_READ_ERRORS();
+
+  if(IsReplayingAndReading())
+  {
+    m_LastCmdBufferID = GetResourceManager()->GetOriginalID(GetResID(commandBuffer));
+
+    if(IsActiveReplaying(m_State))
+    {
+      if(InRerecordRange(m_LastCmdBufferID))
+      {
+        commandBuffer = RerecordCmdBuf(m_LastCmdBufferID);
+        ObjDisp(commandBuffer)
+            ->CmdSetVertexInputEXT(Unwrap(commandBuffer), vertexBindingDescriptionCount,
+                                   pVertexBindingDescriptions, vertexAttributeDescriptionCount,
+                                   pVertexAttributeDescriptions);
+
+        {
+          VulkanRenderState &renderstate = GetCmdRenderState();
+
+          renderstate.vertexBindings.assign(pVertexBindingDescriptions,
+                                            vertexBindingDescriptionCount);
+          renderstate.vertexAttributes.assign(pVertexAttributeDescriptions,
+                                              vertexAttributeDescriptionCount);
+
+          for(uint32_t i = 0; i < vertexBindingDescriptionCount; i++)
+          {
+            // set strides whether or not the vertex buffers have been bound, so that the stride is
+            // available if a later call to BindVertexBuffers2 doesn't pass any strides (it should
+            // use the strides from here)
+            renderstate.vbuffers.resize_for_index(i);
+            renderstate.vbuffers[i].stride = pVertexBindingDescriptions[i].stride;
+          }
+        }
+      }
+    }
+    else
+    {
+      ObjDisp(commandBuffer)
+          ->CmdSetVertexInputEXT(Unwrap(commandBuffer), vertexBindingDescriptionCount,
+                                 pVertexBindingDescriptions, vertexAttributeDescriptionCount,
+                                 pVertexAttributeDescriptions);
+    }
+  }
+
+  return true;
+}
+
+void WrappedVulkan::vkCmdSetVertexInputEXT(
+    VkCommandBuffer commandBuffer, uint32_t vertexBindingDescriptionCount,
+    const VkVertexInputBindingDescription2EXT *pVertexBindingDescriptions,
+    uint32_t vertexAttributeDescriptionCount,
+    const VkVertexInputAttributeDescription2EXT *pVertexAttributeDescriptions)
+{
+  SCOPED_DBG_SINK();
+
+  SERIALISE_TIME_CALL(
+      ObjDisp(commandBuffer)
+          ->CmdSetVertexInputEXT(Unwrap(commandBuffer), vertexBindingDescriptionCount,
+                                 pVertexBindingDescriptions, vertexAttributeDescriptionCount,
+                                 pVertexAttributeDescriptions));
+
+  if(IsCaptureMode(m_State))
+  {
+    VkResourceRecord *record = GetRecord(commandBuffer);
+
+    CACHE_THREAD_SERIALISER();
+
+    SCOPED_SERIALISE_CHUNK(VulkanChunk::vkCmdSetVertexInputEXT);
+    Serialise_vkCmdSetVertexInputEXT(ser, commandBuffer, vertexBindingDescriptionCount,
+                                     pVertexBindingDescriptions, vertexAttributeDescriptionCount,
+                                     pVertexAttributeDescriptions);
+
+    record->AddChunk(scope.Get(&record->cmdInfo->alloc));
+  }
+}
+
+template <typename SerialiserType>
+bool WrappedVulkan::Serialise_vkCmdBeginRenderingKHR(SerialiserType &ser,
+                                                     VkCommandBuffer commandBuffer,
+                                                     const VkRenderingInfoKHR *pRenderingInfo)
+{
+  SERIALISE_ELEMENT(commandBuffer);
+  SERIALISE_ELEMENT_LOCAL(RenderingInfo, *pRenderingInfo).Named("pRenderingInfo"_lit).Important();
+
+  Serialise_DebugMessages(ser);
+
+  SERIALISE_CHECK_READ_ERRORS();
+
+  if(IsReplayingAndReading())
+  {
+    m_LastCmdBufferID = GetResourceManager()->GetOriginalID(GetResID(commandBuffer));
+
+    byte *tempMem = GetTempMemory(GetNextPatchSize(pRenderingInfo));
+    VkRenderingInfoKHR *unwrappedInfo = UnwrapStructAndChain(m_State, tempMem, &RenderingInfo);
+
+    if(IsActiveReplaying(m_State))
+    {
+      if(InRerecordRange(m_LastCmdBufferID))
+      {
+        commandBuffer = RerecordCmdBuf(m_LastCmdBufferID);
+
+        // only if we're partially recording do we update this state
+        if(ShouldUpdateRenderState(m_LastCmdBufferID, true))
+        {
+          m_Partial[Primary].renderPassActive = true;
+        }
+
+        VulkanRenderState &renderstate = GetCmdRenderState();
+
+        {
+          renderstate.subpass = 0;
+          renderstate.SetRenderPass(ResourceId());
+          renderstate.renderArea = RenderingInfo.renderArea;
+          renderstate.dynamicRendering = VulkanRenderState::DynamicRendering();
+          renderstate.dynamicRendering.active = true;
+          renderstate.dynamicRendering.suspended = false;
+          renderstate.dynamicRendering.flags = RenderingInfo.flags;
+          renderstate.dynamicRendering.layerCount = RenderingInfo.layerCount;
+          renderstate.dynamicRendering.viewMask = RenderingInfo.viewMask;
+          renderstate.dynamicRendering.color.assign(RenderingInfo.pColorAttachments,
+                                                    RenderingInfo.colorAttachmentCount);
+          if(RenderingInfo.pDepthAttachment)
+            renderstate.dynamicRendering.depth = *RenderingInfo.pDepthAttachment;
+          if(RenderingInfo.pStencilAttachment)
+            renderstate.dynamicRendering.stencil = *RenderingInfo.pStencilAttachment;
+
+          VkRenderingFragmentDensityMapAttachmentInfoEXT *fragmentDensityAttachment =
+              (VkRenderingFragmentDensityMapAttachmentInfoEXT *)FindNextStruct(
+                  &RenderingInfo,
+                  VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_INFO_EXT);
+
+          if(fragmentDensityAttachment)
+          {
+            renderstate.dynamicRendering.fragmentDensityView = fragmentDensityAttachment->imageView;
+            renderstate.dynamicRendering.fragmentDensityLayout =
+                fragmentDensityAttachment->imageLayout;
+          }
+
+          rdcarray<ResourceId> attachments;
+
+          for(size_t i = 0; i < renderstate.dynamicRendering.color.size(); i++)
+            attachments.push_back(GetResID(renderstate.dynamicRendering.color[i].imageView));
+
+          attachments.push_back(GetResID(renderstate.dynamicRendering.depth.imageView));
+          attachments.push_back(GetResID(renderstate.dynamicRendering.stencil.imageView));
+
+          renderstate.SetFramebuffer(ResourceId(), attachments);
+        }
+
+        // only do discards when not resuming!
+        if(m_ReplayOptions.optimisation != ReplayOptimisationLevel::Fastest &&
+           (RenderingInfo.flags & VK_RENDERING_RESUMING_BIT_KHR) == 0)
+        {
+          rdcarray<VkRenderingAttachmentInfoKHR> dynAtts = renderstate.dynamicRendering.color;
+          dynAtts.push_back(renderstate.dynamicRendering.depth);
+
+          size_t depthIdx = dynAtts.size() - 1;
+          size_t stencilIdx = ~0U;
+          VkImageAspectFlags depthAspects = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+          // if we have different images attached, or different store ops, treat stencil separately
+          if(renderstate.dynamicRendering.stencil.imageView != VK_NULL_HANDLE &&
+             (renderstate.dynamicRendering.depth.imageView !=
+                  renderstate.dynamicRendering.stencil.imageView ||
+              renderstate.dynamicRendering.depth.loadOp !=
+                  renderstate.dynamicRendering.stencil.loadOp))
+          {
+            dynAtts.push_back(renderstate.dynamicRendering.stencil);
+            stencilIdx = dynAtts.size() - 1;
+          }
+          // otherwise if the same image is bound and the storeOp is the same then include it
+          else if(renderstate.dynamicRendering.stencil.imageView != VK_NULL_HANDLE)
+          {
+            depthAspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+          }
+
+          for(size_t i = 0; i < dynAtts.size(); i++)
+          {
+            if(dynAtts[i].imageView == VK_NULL_HANDLE)
+              continue;
+
+            const VulkanCreationInfo::ImageView &viewInfo =
+                m_CreationInfo.m_ImageView[GetResID(dynAtts[i].imageView)];
+            VkImage image = GetResourceManager()->GetCurrentHandle<VkImage>(viewInfo.image);
+
+            if(dynAtts[i].loadOp == VK_ATTACHMENT_LOAD_OP_DONT_CARE)
+            {
+              VkImageSubresourceRange range = viewInfo.range;
+
+              if(i == depthIdx)
+                range.aspectMask = depthAspects;
+
+              if(i == stencilIdx)
+                range.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+
+              GetDebugManager()->FillWithDiscardPattern(commandBuffer, DiscardType::RenderPassLoad,
+                                                        image, dynAtts[i].imageLayout, range,
+                                                        renderstate.renderArea);
+            }
+          }
+        }
+
+        ActionFlags drawFlags = ActionFlags::PassBoundary | ActionFlags::BeginPass;
+        uint32_t eventId = HandlePreCallback(commandBuffer, drawFlags);
+
+        // do the same load/store op patching that we do for regular renderpass creates to enable
+        // introspection. It doesn't matter that we don't do this before during load because the
+        // effects of that are never user-visible.
+        if(m_ReplayOptions.optimisation != ReplayOptimisationLevel::Fastest)
+        {
+          for(uint32_t i = 0; i < unwrappedInfo->colorAttachmentCount + 2; i++)
+          {
+            VkRenderingAttachmentInfoKHR *att =
+                (VkRenderingAttachmentInfoKHR *)unwrappedInfo->pColorAttachments + i;
+
+            if(i == unwrappedInfo->colorAttachmentCount)
+              att = (VkRenderingAttachmentInfoKHR *)unwrappedInfo->pDepthAttachment;
+            else if(i == unwrappedInfo->colorAttachmentCount + 1)
+              att = (VkRenderingAttachmentInfoKHR *)unwrappedInfo->pStencilAttachment;
+
+            if(!att)
+              continue;
+
+            if(att->storeOp != VK_ATTACHMENT_STORE_OP_NONE_EXT)
+              att->storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+            if(att->loadOp == VK_ATTACHMENT_LOAD_OP_DONT_CARE)
+              att->loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+          }
+        }
+
+        ObjDisp(commandBuffer)->CmdBeginRenderingKHR(Unwrap(commandBuffer), unwrappedInfo);
+
+        if(eventId && m_ActionCallback->PostMisc(eventId, drawFlags, commandBuffer))
+        {
+          // Do not call vkCmdBeginRenderingKHR again.
+          m_ActionCallback->PostRemisc(eventId, drawFlags, commandBuffer);
+        }
+      }
+    }
+    else
+    {
+      ObjDisp(commandBuffer)->CmdBeginRenderingKHR(Unwrap(commandBuffer), unwrappedInfo);
+
+      VulkanRenderState &renderstate = m_BakedCmdBufferInfo[m_LastCmdBufferID].state;
+
+      {
+        renderstate.renderArea = RenderingInfo.renderArea;
+        renderstate.dynamicRendering = VulkanRenderState::DynamicRendering();
+        renderstate.dynamicRendering.active = true;
+        renderstate.dynamicRendering.suspended = false;
+        renderstate.dynamicRendering.flags = RenderingInfo.flags;
+        renderstate.dynamicRendering.layerCount = RenderingInfo.layerCount;
+        renderstate.dynamicRendering.viewMask = RenderingInfo.viewMask;
+        renderstate.dynamicRendering.color.assign(RenderingInfo.pColorAttachments,
+                                                  RenderingInfo.colorAttachmentCount);
+        if(RenderingInfo.pDepthAttachment)
+          renderstate.dynamicRendering.depth = *RenderingInfo.pDepthAttachment;
+        if(RenderingInfo.pStencilAttachment)
+          renderstate.dynamicRendering.stencil = *RenderingInfo.pStencilAttachment;
+
+        VkRenderingFragmentDensityMapAttachmentInfoEXT *fragmentDensityAttachment =
+            (VkRenderingFragmentDensityMapAttachmentInfoEXT *)FindNextStruct(
+                &RenderingInfo, VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_INFO_EXT);
+
+        if(fragmentDensityAttachment)
+        {
+          renderstate.dynamicRendering.fragmentDensityView = fragmentDensityAttachment->imageView;
+          renderstate.dynamicRendering.fragmentDensityLayout = fragmentDensityAttachment->imageLayout;
+        }
+
+        rdcarray<ResourceId> attachments;
+
+        for(size_t i = 0; i < renderstate.dynamicRendering.color.size(); i++)
+          attachments.push_back(
+              m_CreationInfo.m_ImageView[GetResID(renderstate.dynamicRendering.color[i].imageView)].image);
+
+        attachments.push_back(
+            m_CreationInfo.m_ImageView[GetResID(renderstate.dynamicRendering.depth.imageView)].image);
+        attachments.push_back(
+            m_CreationInfo.m_ImageView[GetResID(renderstate.dynamicRendering.stencil.imageView)].image);
+
+        renderstate.SetFramebuffer(ResourceId(), attachments);
+      }
+
+      AddEvent();
+      ActionDescription action;
+      action.customName =
+          StringFormat::Fmt("vkCmdBeginRenderingKHR(%s)", MakeRenderPassOpString(false).c_str());
+      action.flags |= ActionFlags::PassBoundary | ActionFlags::BeginPass;
+
+      AddAction(action);
+    }
+  }
+
+  return true;
+}
+
+void WrappedVulkan::vkCmdBeginRenderingKHR(VkCommandBuffer commandBuffer,
+                                           const VkRenderingInfoKHR *pRenderingInfo)
+{
+  SCOPED_DBG_SINK();
+
+  byte *tempMem = GetTempMemory(GetNextPatchSize(pRenderingInfo));
+  VkRenderingInfoKHR *unwrappedInfo = UnwrapStructAndChain(m_State, tempMem, pRenderingInfo);
+
+  SERIALISE_TIME_CALL(
+      ObjDisp(commandBuffer)->CmdBeginRenderingKHR(Unwrap(commandBuffer), unwrappedInfo));
+
+  if(IsCaptureMode(m_State))
+  {
+    VkResourceRecord *record = GetRecord(commandBuffer);
+
+    CACHE_THREAD_SERIALISER();
+
+    SCOPED_SERIALISE_CHUNK(VulkanChunk::vkCmdBeginRenderingKHR);
+    Serialise_vkCmdBeginRenderingKHR(ser, commandBuffer, pRenderingInfo);
+
+    record->AddChunk(scope.Get(&record->cmdInfo->alloc));
+
+    for(uint32_t i = 0; i < pRenderingInfo->colorAttachmentCount + 2; i++)
+    {
+      const VkRenderingAttachmentInfoKHR *att = pRenderingInfo->pColorAttachments + i;
+
+      if(i == pRenderingInfo->colorAttachmentCount)
+        att = pRenderingInfo->pDepthAttachment;
+      else if(i == pRenderingInfo->colorAttachmentCount + 1)
+        att = pRenderingInfo->pStencilAttachment;
+
+      if(!att)
+        continue;
+
+      FrameRefType refType = eFrameRef_ReadBeforeWrite;
+
+      VkResourceRecord *viewRecord = GetRecord(att->imageView);
+      const ImageInfo &imInfo = viewRecord->resInfo->imageInfo;
+
+      // if the view covers the whole image
+      if(viewRecord->viewRange.baseArrayLayer == 0 && viewRecord->viewRange.baseMipLevel == 0 &&
+         viewRecord->viewRange.layerCount() == imInfo.layerCount &&
+         viewRecord->viewRange.levelCount() == imInfo.levelCount &&
+         // and we're rendering to all layers
+         pRenderingInfo->layerCount == imInfo.layerCount &&
+         // and the render area covers the whole image dimension
+         pRenderingInfo->renderArea.offset.x == 0 && pRenderingInfo->renderArea.offset.y == 0 &&
+         pRenderingInfo->renderArea.extent.width == imInfo.extent.width &&
+         pRenderingInfo->renderArea.extent.height == imInfo.extent.height)
+      {
+        // if we're either clearing or discarding, this can be considered completely written
+        if(att->loadOp != VK_ATTACHMENT_LOAD_OP_LOAD && att->loadOp != VK_ATTACHMENT_LOAD_OP_NONE_EXT)
+        {
+          refType = eFrameRef_CompleteWrite;
+        }
+      }
+
+      // if we're completely writing this resource (i.e. nothing from previous data is visible) and
+      // it's also DONT_CARE storage (so nothing from this render pass will be visible after) then
+      // it's completely written and discarded in one go.
+      if(refType == eFrameRef_CompleteWrite && att->storeOp == VK_ATTACHMENT_STORE_OP_DONT_CARE)
+      {
+        refType = eFrameRef_CompleteWriteAndDiscard;
+      }
+
+      record->MarkImageViewFrameReferenced(viewRecord, ImageRange(), refType);
+      if(att->resolveMode)
+        record->MarkImageViewFrameReferenced(GetRecord(att->resolveImageView), ImageRange(), refType);
+    }
+  }
+}
+
+template <typename SerialiserType>
+bool WrappedVulkan::Serialise_vkCmdEndRenderingKHR(SerialiserType &ser, VkCommandBuffer commandBuffer)
+{
+  SERIALISE_ELEMENT(commandBuffer);
+
+  Serialise_DebugMessages(ser);
+
+  SERIALISE_CHECK_READ_ERRORS();
+
+  if(IsReplayingAndReading())
+  {
+    m_LastCmdBufferID = GetResourceManager()->GetOriginalID(GetResID(commandBuffer));
+
+    if(IsActiveReplaying(m_State))
+    {
+      if(InRerecordRange(m_LastCmdBufferID))
+      {
+        commandBuffer = RerecordCmdBuf(m_LastCmdBufferID);
+
+        VulkanRenderState &renderstate = GetCmdRenderState();
+
+        bool suspending = (renderstate.dynamicRendering.flags & VK_RENDERING_SUSPENDING_BIT_KHR) != 0;
+
+        if(ShouldUpdateRenderState(m_LastCmdBufferID, true))
+        {
+          // if this rendering is just being suspended, the pass is still active
+          if(!suspending)
+            m_Partial[Primary].renderPassActive = false;
+        }
+
+        ActionFlags drawFlags = ActionFlags::PassBoundary | ActionFlags::EndPass;
+        uint32_t eventId = HandlePreCallback(commandBuffer, drawFlags);
+
+        ObjDisp(commandBuffer)->CmdEndRenderingKHR(Unwrap(commandBuffer));
+
+        if(eventId && m_ActionCallback->PostMisc(eventId, drawFlags, commandBuffer))
+        {
+          // Do not call vkCmdEndRenderingKHR again.
+          m_ActionCallback->PostRemisc(eventId, drawFlags, commandBuffer);
+        }
+
+        // only do discards when not suspending!
+        if(m_ReplayOptions.optimisation != ReplayOptimisationLevel::Fastest && !suspending)
+        {
+          rdcarray<VkRenderingAttachmentInfoKHR> dynAtts = renderstate.dynamicRendering.color;
+          dynAtts.push_back(renderstate.dynamicRendering.depth);
+
+          size_t depthIdx = dynAtts.size() - 1;
+          size_t stencilIdx = ~0U;
+          VkImageAspectFlags depthAspects = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+          // if we have different images attached, or different store ops, treat stencil separately
+          if(renderstate.dynamicRendering.stencil.imageView != VK_NULL_HANDLE &&
+             (renderstate.dynamicRendering.depth.imageView !=
+                  renderstate.dynamicRendering.stencil.imageView ||
+              renderstate.dynamicRendering.depth.storeOp !=
+                  renderstate.dynamicRendering.stencil.storeOp))
+          {
+            dynAtts.push_back(renderstate.dynamicRendering.stencil);
+            stencilIdx = dynAtts.size() - 1;
+          }
+          // otherwise if the same image is bound and the storeOp is the same then include it
+          else if(renderstate.dynamicRendering.stencil.imageView != VK_NULL_HANDLE)
+          {
+            depthAspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+          }
+
+          for(size_t i = 0; i < dynAtts.size(); i++)
+          {
+            if(dynAtts[i].imageView == VK_NULL_HANDLE)
+              continue;
+
+            const VulkanCreationInfo::ImageView &viewInfo =
+                m_CreationInfo.m_ImageView[GetResID(dynAtts[i].imageView)];
+            VkImage image = GetResourceManager()->GetCurrentHandle<VkImage>(viewInfo.image);
+
+            if(dynAtts[i].storeOp == VK_ATTACHMENT_STORE_OP_DONT_CARE)
+            {
+              VkImageSubresourceRange range = viewInfo.range;
+
+              if(i == depthIdx)
+                range.aspectMask = depthAspects;
+
+              if(i == stencilIdx)
+                range.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+
+              GetDebugManager()->FillWithDiscardPattern(commandBuffer, DiscardType::RenderPassStore,
+                                                        image, dynAtts[i].imageLayout, range,
+                                                        renderstate.renderArea);
+            }
+          }
+        }
+
+        if(suspending)
+        {
+          renderstate.dynamicRendering.suspended = true;
+        }
+        else
+        {
+          renderstate.dynamicRendering = VulkanRenderState::DynamicRendering();
+          renderstate.SetFramebuffer(ResourceId(), rdcarray<ResourceId>());
+        }
+      }
+    }
+    else
+    {
+      ObjDisp(commandBuffer)->CmdEndRenderingKHR(Unwrap(commandBuffer));
+
+      // fetch any queued indirect readbacks here
+      for(const VkIndirectRecordData &indirectcopy :
+          m_BakedCmdBufferInfo[m_LastCmdBufferID].indirectCopies)
+        ExecuteIndirectReadback(commandBuffer, indirectcopy);
+
+      m_BakedCmdBufferInfo[m_LastCmdBufferID].indirectCopies.clear();
+
+      VulkanRenderState &state = m_BakedCmdBufferInfo[m_LastCmdBufferID].state;
+
+      uint32_t eid = m_BakedCmdBufferInfo[m_LastCmdBufferID].curEventID;
+      rdcarray<rdcpair<ResourceId, EventUsage>> &usage =
+          m_BakedCmdBufferInfo[m_LastCmdBufferID].resourceUsage;
+
+      VulkanRenderState::DynamicRendering &dyn = state.dynamicRendering;
+
+      bool suspending = (dyn.flags & VK_RENDERING_SUSPENDING_BIT_KHR) != 0;
+
+      rdcarray<VkRenderingAttachmentInfoKHR> dynAtts = dyn.color;
+      dynAtts.push_back(dyn.depth);
+
+      // if stencil attachment is different, or only one is resolving, add the stencil attachment.
+      // Otherwise depth will cover both (at most)
+      if((dyn.depth.imageView != dyn.stencil.imageView) ||
+         (dyn.depth.resolveMode != 0) != (dyn.stencil.resolveMode != 0))
+        dynAtts.push_back(dyn.stencil);
+
+      for(size_t i = 0; i < dynAtts.size(); i++)
+      {
+        if(dynAtts[i].resolveMode && dynAtts[i].imageView != VK_NULL_HANDLE &&
+           dynAtts[i].resolveImageView != VK_NULL_HANDLE)
+        {
+          usage.push_back(make_rdcpair(m_CreationInfo.m_ImageView[GetResID(dynAtts[i].imageView)].image,
+                                       EventUsage(eid, ResourceUsage::ResolveSrc)));
+
+          usage.push_back(
+              make_rdcpair(m_CreationInfo.m_ImageView[GetResID(dynAtts[i].resolveImageView)].image,
+                           EventUsage(eid, ResourceUsage::ResolveDst)));
+        }
+
+        // also add any discards
+        if(dynAtts[i].storeOp == VK_ATTACHMENT_STORE_OP_DONT_CARE)
+        {
+          usage.push_back(make_rdcpair(m_CreationInfo.m_ImageView[GetResID(dynAtts[i].imageView)].image,
+                                       EventUsage(eid, ResourceUsage::Discard)));
+        }
+      }
+
+      AddEvent();
+      ActionDescription action;
+      action.customName =
+          StringFormat::Fmt("vkCmdEndRenderingKHR(%s)", MakeRenderPassOpString(true).c_str());
+      action.flags |= ActionFlags::PassBoundary | ActionFlags::EndPass;
+
+      AddAction(action);
+
+      if(!suspending)
+      {
+        // track while reading, reset this to empty so AddAction sets no outputs,
+        // but only AFTER the above AddAction (we want it grouped together)
+        state.dynamicRendering = VulkanRenderState::DynamicRendering();
+        state.SetFramebuffer(ResourceId(), rdcarray<ResourceId>());
+      }
+    }
+  }
+
+  return true;
+}
+
+void WrappedVulkan::vkCmdEndRenderingKHR(VkCommandBuffer commandBuffer)
+{
+  SCOPED_DBG_SINK();
+
+  SERIALISE_TIME_CALL(ObjDisp(commandBuffer)->CmdEndRenderingKHR(Unwrap(commandBuffer)));
+
+  if(IsCaptureMode(m_State))
+  {
+    VkResourceRecord *record = GetRecord(commandBuffer);
+
+    CACHE_THREAD_SERIALISER();
+
+    SCOPED_SERIALISE_CHUNK(VulkanChunk::vkCmdEndRenderingKHR);
+    Serialise_vkCmdEndRenderingKHR(ser, commandBuffer);
+
+    record->AddChunk(scope.Get(&record->cmdInfo->alloc));
+  }
+}
+
 INSTANTIATE_FUNCTION_SERIALISED(VkResult, vkCreateCommandPool, VkDevice device,
                                 const VkCommandPoolCreateInfo *pCreateInfo,
                                 const VkAllocationCallbacks *pAllocator, VkCommandPool *pCommandPool);
@@ -6409,3 +7259,15 @@ INSTANTIATE_FUNCTION_SERIALISED(void, vkCmdPipelineBarrier2KHR, VkCommandBuffer 
 INSTANTIATE_FUNCTION_SERIALISED(void, vkCmdWriteTimestamp2KHR, VkCommandBuffer commandBuffer,
                                 VkPipelineStageFlags2KHR stage, VkQueryPool queryPool,
                                 uint32_t query);
+
+INSTANTIATE_FUNCTION_SERIALISED(
+    void, vkCmdSetVertexInputEXT, VkCommandBuffer commandBuffer,
+    uint32_t vertexBindingDescriptionCount,
+    const VkVertexInputBindingDescription2EXT *pVertexBindingDescriptions,
+    uint32_t vertexAttributeDescriptionCount,
+    const VkVertexInputAttributeDescription2EXT *pVertexAttributeDescriptions);
+
+INSTANTIATE_FUNCTION_SERIALISED(void, vkCmdBeginRenderingKHR, VkCommandBuffer commandBuffer,
+                                const VkRenderingInfoKHR *pRenderingInfo);
+
+INSTANTIATE_FUNCTION_SERIALISED(void, vkCmdEndRenderingKHR, VkCommandBuffer commandBuffer);

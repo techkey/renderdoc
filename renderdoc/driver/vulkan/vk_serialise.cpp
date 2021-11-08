@@ -117,7 +117,7 @@ DECL_VKFLAG(VkSamplerCreate);
 DECL_VKFLAG(VkSampleCount);
 DECL_VKFLAG_EMPTY(VkSemaphoreCreate);
 DECL_VKFLAG(VkSemaphoreImport);
-DECL_VKFLAG(VkShaderModuleCreate);
+DECL_VKFLAG_EMPTY(VkShaderModuleCreate);
 DECL_VKFLAG(VkShaderStage);
 DECL_VKFLAG(VkSparseImageFormat);
 DECL_VKFLAG(VkSparseMemoryBind);
@@ -162,6 +162,8 @@ DECL_VKFLAG_EXT(VkToolPurpose, EXT);
 DECL_VKFLAG_EXT(VkSubmit, KHR);
 DECL_VKFLAG_EXT(VkPipelineStage, 2KHR);
 DECL_VKFLAG_EXT(VkAccess, 2KHR);
+DECL_VKFLAG_EXT(VkFormatFeature, 2KHR);
+DECL_VKFLAG_EXT(VkRendering, KHR);
 
 // serialise a member as flags - cast to the Bits enum for serialisation so the stringification
 // picks up the bitfield and doesn't treat it as uint32_t. Then we rename the type back to the base
@@ -373,21 +375,53 @@ SERIALISE_VK_HANDLES();
 
 #endif
 
+#ifdef VK_USE_PLATFORM_FUCHSIA
+
+#error "Not implemented"
+
+#else
+
+#define HANDLE_PNEXT_OS_FUCHSIA()                                                   \
+  /* VK_FUCHSIA_external_memory */                                                  \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_IMPORT_MEMORY_ZIRCON_HANDLE_INFO_FUCHSIA)     \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_MEMORY_ZIRCON_HANDLE_PROPERTIES_FUCHSIA)      \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_MEMORY_GET_ZIRCON_HANDLE_INFO_FUCHSIA)        \
+                                                                                    \
+  /* VK_FUCHSIA_external_semaphore */                                               \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_ZIRCON_HANDLE_INFO_FUCHSIA)  \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_SEMAPHORE_GET_ZIRCON_HANDLE_INFO_FUCHSIA)     \
+                                                                                    \
+  /* VK_FUCHSIA_buffer_collection */                                                \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_BUFFER_COLLECTION_CREATE_INFO_FUCHSIA)        \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_IMPORT_MEMORY_BUFFER_COLLECTION_FUCHSIA)      \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_BUFFER_COLLECTION_IMAGE_CREATE_INFO_FUCHSIA)  \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_BUFFER_COLLECTION_CONSTRAINTS_INFO_FUCHSIA)   \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_BUFFER_CONSTRAINTS_INFO_FUCHSIA)              \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_BUFFER_COLLECTION_BUFFER_CREATE_INFO_FUCHSIA) \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_SYSMEM_COLOR_SPACE_FUCHSIA)                   \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_BUFFER_COLLECTION_PROPERTIES_FUCHSIA)         \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_IMAGE_FORMAT_CONSTRAINTS_INFO_FUCHSIA)        \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_IMAGE_CONSTRAINTS_INFO_FUCHSIA)
+
+#endif
+
 #ifdef VK_USE_PLATFORM_ANDROID_KHR
 
-#define HANDLE_PNEXT_OS_ANDROID()                                                   \
-  /* VK_ANDROID_external_memory_android_hardware_buffer */                          \
-  PNEXT_STRUCT(VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_USAGE_ANDROID,             \
-               VkAndroidHardwareBufferUsageANDROID)                                 \
-  PNEXT_STRUCT(VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID,        \
-               VkAndroidHardwareBufferPropertiesANDROID)                            \
-  PNEXT_STRUCT(VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID, \
-               VkAndroidHardwareBufferFormatPropertiesANDROID)                      \
-  PNEXT_STRUCT(VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID,       \
-               VkImportAndroidHardwareBufferInfoANDROID)                            \
-  PNEXT_STRUCT(VK_STRUCTURE_TYPE_MEMORY_GET_ANDROID_HARDWARE_BUFFER_INFO_ANDROID,   \
-               VkMemoryGetAndroidHardwareBufferInfoANDROID)                         \
-  PNEXT_STRUCT(VK_STRUCTURE_TYPE_EXTERNAL_FORMAT_ANDROID, VkExternalFormatANDROID)
+#define HANDLE_PNEXT_OS_ANDROID()                                                     \
+  /* VK_ANDROID_external_memory_android_hardware_buffer */                            \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_USAGE_ANDROID,               \
+               VkAndroidHardwareBufferUsageANDROID)                                   \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID,          \
+               VkAndroidHardwareBufferPropertiesANDROID)                              \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID,   \
+               VkAndroidHardwareBufferFormatPropertiesANDROID)                        \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID,         \
+               VkImportAndroidHardwareBufferInfoANDROID)                              \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_MEMORY_GET_ANDROID_HARDWARE_BUFFER_INFO_ANDROID,     \
+               VkMemoryGetAndroidHardwareBufferInfoANDROID)                           \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_EXTERNAL_FORMAT_ANDROID, VkExternalFormatANDROID)    \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_2_ANDROID, \
+               VkAndroidHardwareBufferFormatProperties2ANDROID)
 #else
 
 #define HANDLE_PNEXT_OS_ANDROID()                                                        \
@@ -397,7 +431,8 @@ SERIALISE_VK_HANDLES();
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID) \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID)       \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_MEMORY_GET_ANDROID_HARDWARE_BUFFER_INFO_ANDROID)   \
-  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_EXTERNAL_FORMAT_ANDROID)
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_EXTERNAL_FORMAT_ANDROID)                           \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_2_ANDROID)
 #endif
 
 // pNext structure type dispatch
@@ -405,6 +440,7 @@ SERIALISE_VK_HANDLES();
   /* OS-specific extensions */                                                                         \
   HANDLE_PNEXT_OS_WIN32()                                                                              \
   HANDLE_PNEXT_OS_ANDROID()                                                                            \
+  HANDLE_PNEXT_OS_FUCHSIA()                                                                            \
   HANDLE_PNEXT_OS_GGP()                                                                                \
                                                                                                        \
   /* Core 1.0 structs. Should never be serialised in a pNext chain */                                  \
@@ -521,6 +557,12 @@ SERIALISE_VK_HANDLES();
   /* VK_EXT_calibrated_timestamps */                                                                   \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT, VkCalibratedTimestampInfoEXT)          \
                                                                                                        \
+  /* VK_EXT_color_write_enable */                                                                      \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COLOR_WRITE_ENABLE_FEATURES_EXT,                      \
+               VkPhysicalDeviceColorWriteEnableFeaturesEXT)                                            \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PIPELINE_COLOR_WRITE_CREATE_INFO_EXT,                                 \
+               VkPipelineColorWriteCreateInfoEXT)                                                      \
+                                                                                                       \
   /* VK_EXT_conditional_rendering */                                                                   \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_CONDITIONAL_RENDERING_INFO_EXT,            \
                VkCommandBufferInheritanceConditionalRenderingInfoEXT)                                  \
@@ -598,6 +640,10 @@ SERIALISE_VK_HANDLES();
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,                  \
                VkPhysicalDeviceExtendedDynamicStateFeaturesEXT)                                        \
                                                                                                        \
+  /* VK_EXT_extended_dynamic_state2 */                                                                 \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT,                \
+               VkPhysicalDeviceExtendedDynamicState2FeaturesEXT)                                       \
+                                                                                                       \
   /* VK_EXT_filter_cubic */                                                                            \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_VIEW_IMAGE_FORMAT_INFO_EXT,                     \
                VkPhysicalDeviceImageViewImageFormatInfoEXT)                                            \
@@ -612,6 +658,12 @@ SERIALISE_VK_HANDLES();
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_RENDER_PASS_FRAGMENT_DENSITY_MAP_CREATE_INFO_EXT,                     \
                VkRenderPassFragmentDensityMapCreateInfoEXT)                                            \
                                                                                                        \
+  /* VK_EXT_fragment_density_map_2 */                                                                  \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_2_FEATURES_EXT,                  \
+               VkPhysicalDeviceFragmentDensityMap2FeaturesEXT)                                         \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_2_PROPERTIES_EXT,                \
+               VkPhysicalDeviceFragmentDensityMap2PropertiesEXT)                                       \
+                                                                                                       \
   /* VK_EXT_fragment_shader_interlock */                                                               \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT,               \
                VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT)                                     \
@@ -619,6 +671,12 @@ SERIALISE_VK_HANDLES();
   /* VK_EXT_global_priority */                                                                         \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT,                         \
                VkDeviceQueueGlobalPriorityCreateInfoEXT)                                               \
+                                                                                                       \
+  /* VK_EXT_global_priority_query */                                                                   \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GLOBAL_PRIORITY_QUERY_FEATURES_EXT,                   \
+               VkPhysicalDeviceGlobalPriorityQueryFeaturesEXT)                                         \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_QUEUE_FAMILY_GLOBAL_PRIORITY_PROPERTIES_EXT,                          \
+               VkQueueFamilyGlobalPriorityPropertiesEXT)                                               \
                                                                                                        \
   /* VK_EXT_hdr_metadata */                                                                            \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_HDR_METADATA_EXT, VkHdrMetadataEXT)                                   \
@@ -681,6 +739,10 @@ SERIALISE_VK_HANDLES();
                VkDevicePrivateDataCreateInfoEXT)                                                       \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PRIVATE_DATA_SLOT_CREATE_INFO_EXT, VkPrivateDataSlotCreateInfoEXT)    \
                                                                                                        \
+  /* VK_EXT_rgba10x6_formats */                                                                        \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RGBA10X6_FORMATS_FEATURES_EXT,                        \
+               VkPhysicalDeviceRGBA10X6FormatsFeaturesEXT)                                             \
+                                                                                                       \
   /* VK_EXT_robustness2 */                                                                             \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT,                            \
                VkPhysicalDeviceRobustness2FeaturesEXT)                                                 \
@@ -710,6 +772,10 @@ SERIALISE_VK_HANDLES();
   /* VK_EXT_shader_atomic_float */                                                                     \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT,                     \
                VkPhysicalDeviceShaderAtomicFloatFeaturesEXT)                                           \
+                                                                                                       \
+  /* VK_EXT_shader_atomic_float2 */                                                                    \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_2_FEATURES_EXT,                   \
+               VkPhysicalDeviceShaderAtomicFloat2FeaturesEXT)                                          \
                                                                                                        \
   /* VK_EXT_shader_demote_to_helper_invocation */                                                      \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT,      \
@@ -766,6 +832,18 @@ SERIALISE_VK_HANDLES();
                VkPipelineVertexInputDivisorStateCreateInfoEXT)                                         \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT,                \
                VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT)                                      \
+                                                                                                       \
+  /* VK_EXT_vertex_input_dynamic_state */                                                              \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_INPUT_DYNAMIC_STATE_FEATURES_EXT,              \
+               VkPhysicalDeviceVertexInputDynamicStateFeaturesEXT)                                     \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT,                               \
+               VkVertexInputBindingDescription2EXT)                                                    \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT,                             \
+               VkVertexInputAttributeDescription2EXT)                                                  \
+                                                                                                       \
+  /* VK_EXT_ycbcr_2plane_444_formats */                                                                \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_YCBCR_2_PLANE_444_FORMATS_FEATURES_EXT,               \
+               VkPhysicalDeviceYcbcr2Plane444FormatsFeaturesEXT)                                       \
                                                                                                        \
   /* VK_EXT_ycbcr_image_arrays */                                                                      \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_YCBCR_IMAGE_ARRAYS_FEATURES_EXT,                      \
@@ -864,6 +942,18 @@ SERIALISE_VK_HANDLES();
   /* VK_KHR_driver_properties */                                                                       \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES, VkPhysicalDeviceDriverProperties)  \
                                                                                                        \
+  /* VK_KHR_dynamic_rendering */                                                                       \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR, VkRenderingAttachmentInfoKHR)          \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_RENDERING_INFO_KHR, VkRenderingInfoKHR)                               \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,                                   \
+               VkPipelineRenderingCreateInfoKHR)                                                       \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,                       \
+               VkPhysicalDeviceDynamicRenderingFeaturesKHR)                                            \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO_KHR,                        \
+               VkCommandBufferInheritanceRenderingInfoKHR)                                             \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_INFO_EXT,                   \
+               VkRenderingFragmentDensityMapAttachmentInfoEXT)                                         \
+                                                                                                       \
   /* VK_KHR_external_fence_capabilities */                                                             \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_FENCE_INFO,                                  \
                VkPhysicalDeviceExternalFenceInfo)                                                      \
@@ -901,6 +991,9 @@ SERIALISE_VK_HANDLES();
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO, VkExportSemaphoreCreateInfo)            \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR, VkImportSemaphoreFdInfoKHR)             \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR, VkSemaphoreGetFdInfoKHR)                   \
+                                                                                                       \
+  /* VK_KHR_format_feature_flags2 */                                                                   \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR, VkFormatProperties3KHR)                      \
                                                                                                        \
   /* VK_KHR_get_display_properties2 */                                                                 \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_DISPLAY_PROPERTIES_2_KHR, VkDisplayProperties2KHR)                    \
@@ -965,6 +1058,16 @@ SERIALISE_VK_HANDLES();
                VkPhysicalDeviceMaintenance3Properties)                                                 \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT, VkDescriptorSetLayoutSupport)          \
                                                                                                        \
+  /* VK_KHR_maintenance4 */                                                                            \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES_KHR,                           \
+               VkPhysicalDeviceMaintenance4FeaturesKHR)                                                \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES_KHR,                         \
+               VkPhysicalDeviceMaintenance4PropertiesKHR)                                              \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_DEVICE_BUFFER_MEMORY_REQUIREMENTS_KHR,                                \
+               VkDeviceBufferMemoryRequirementsKHR)                                                    \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS_KHR,                                 \
+               VkDeviceImageMemoryRequirementsKHR)                                                     \
+                                                                                                       \
   /* VK_KHR_multiview */                                                                               \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO, VkRenderPassMultiviewCreateInfo)   \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES,                                   \
@@ -995,6 +1098,15 @@ SERIALISE_VK_HANDLES();
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR, VkPipelineExecutableStatisticKHR)  \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INTERNAL_REPRESENTATION_KHR,                      \
                VkPipelineExecutableInternalRepresentationKHR)                                          \
+                                                                                                       \
+  /* VK_KHR_present_id */                                                                              \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PRESENT_ID_KHR, VkPresentIdKHR)                                       \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR,                              \
+               VkPhysicalDevicePresentIdFeaturesKHR)                                                   \
+                                                                                                       \
+  /* VK_KHR_present_wait */                                                                            \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR,                            \
+               VkPhysicalDevicePresentWaitFeaturesKHR)                                                 \
                                                                                                        \
   /* VK_KHR_push_descriptor */                                                                         \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR,                       \
@@ -1036,9 +1148,19 @@ SERIALISE_VK_HANDLES();
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES,                            \
                VkPhysicalDeviceFloatControlsProperties)                                                \
                                                                                                        \
+  /* VK_KHR_shader_integer_dot_product */                                                              \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES_KHR,              \
+               VkPhysicalDeviceShaderIntegerDotProductFeaturesKHR)                                     \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_PROPERTIES_KHR,            \
+               VkPhysicalDeviceShaderIntegerDotProductPropertiesKHR)                                   \
+                                                                                                       \
   /* VK_KHR_shader_subgroup_extended_types */                                                          \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_EXTENDED_TYPES_FEATURES,              \
                VkPhysicalDeviceShaderSubgroupExtendedTypesFeatures)                                    \
+                                                                                                       \
+  /* VK_KHR_shader_subgroup_uniform_control_flow */                                                    \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_UNIFORM_CONTROL_FLOW_FEATURES_KHR,    \
+               VkPhysicalDeviceShaderSubgroupUniformControlFlowFeaturesKHR)                            \
                                                                                                        \
   /* VK_KHR_shader_terminate_invocation */                                                             \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_TERMINATE_INVOCATION_FEATURES_KHR,             \
@@ -1139,6 +1261,7 @@ SERIALISE_VK_HANDLES();
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR)                                   \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR)                                     \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR)                                    \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_SCREEN_SURFACE_CREATE_INFO_QNX)                                  \
                                                                                                        \
   /* VK_AMD_memory_overallocation_behavior */                                                          \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_DEVICE_MEMORY_OVERALLOCATION_CREATE_INFO_AMD)                    \
@@ -1160,6 +1283,10 @@ SERIALISE_VK_HANDLES();
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_PROPERTIES_EXT)         \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_ADVANCED_STATE_CREATE_INFO_EXT)             \
                                                                                                        \
+  /* VK_EXT_border_color_swizzle */                                                                    \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BORDER_COLOR_SWIZZLE_FEATURES_EXT)               \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_SAMPLER_BORDER_COLOR_COMPONENT_MAPPING_CREATE_INFO_EXT)          \
+                                                                                                       \
   /* VK_EXT_device_memory_report */                                                                    \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_MEMORY_REPORT_FEATURES_EXT)               \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_DEVICE_DEVICE_MEMORY_REPORT_CREATE_INFO_EXT)                     \
@@ -1170,10 +1297,6 @@ SERIALISE_VK_HANDLES();
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT)                              \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT)             \
                                                                                                        \
-  /* VK_EXT_fragment_density_map_2 */                                                                  \
-  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_2_FEATURES_EXT)             \
-  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_2_PROPERTIES_EXT)           \
-                                                                                                       \
   /* VK_EXT_headless_surface */                                                                        \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT)                                \
                                                                                                        \
@@ -1183,9 +1306,36 @@ SERIALISE_VK_HANDLES();
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT)                  \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT)              \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT)                        \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_2_EXT)                       \
+                                                                                                       \
+  /* VK_EXT_multi_draw */                                                                              \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTI_DRAW_FEATURES_EXT)                         \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTI_DRAW_PROPERTIES_EXT)                       \
+                                                                                                       \
+  /* VK_EXT_pageable_device_local_memory */                                                            \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PAGEABLE_DEVICE_LOCAL_MEMORY_FEATURES_EXT)       \
+                                                                                                       \
+  /* VK_EXT_physical_device_drm */                                                                     \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT)                              \
+                                                                                                       \
+  /* VK_EXT_primitive_topology_list_restart */                                                         \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIMITIVE_TOPOLOGY_LIST_RESTART_FEATURES_EXT)    \
+                                                                                                       \
+  /* VK_EXT_provoking_vertex */                                                                        \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_FEATURES_EXT)                   \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_PROVOKING_VERTEX_STATE_CREATE_INFO_EXT)   \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_PROPERTIES_EXT)                 \
                                                                                                        \
   /* VK_EXT_texture_compression_astc_hdr */                                                            \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT)       \
+                                                                                                       \
+  /* VK_HUAWEI_invocation_mask */                                                                      \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INVOCATION_MASK_FEATURES_HUAWEI)                 \
+                                                                                                       \
+  /* VK_HUAWEI_subpass_shading */                                                                      \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_SUBPASS_SHADING_PIPELINE_CREATE_INFO_HUAWEI)                     \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBPASS_SHADING_FEATURES_HUAWEI)                 \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBPASS_SHADING_PROPERTIES_HUAWEI)               \
                                                                                                        \
   /* VK_INTEL_performance_query */                                                                     \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_QUERY_POOL_PERFORMANCE_QUERY_CREATE_INFO_INTEL)                  \
@@ -1221,13 +1371,11 @@ SERIALISE_VK_HANDLES();
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_PROPERTIES_KHR)            \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR)              \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_KHR)                       \
+  /* Interaction with VK_KHR_dynamic_rendering */                                                      \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_INFO_KHR)             \
                                                                                                        \
   /* VK_KHR_pipeline_library */                                                                        \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR)                                \
-                                                                                                       \
-  /* VK_KHR_portability_subset */                                                                      \
-  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR)                 \
-  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_PROPERTIES_KHR)               \
                                                                                                        \
   /* VK_KHR_ray_tracing_pipeline */                                                                    \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR)                            \
@@ -1261,7 +1409,7 @@ SERIALISE_VK_HANDLES();
   /* VK_NV_device_diagnostic_checkpoints */                                                            \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV)                                              \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_QUEUE_FAMILY_CHECKPOINT_PROPERTIES_NV)                           \
-  /* VK_KHR_synchronization2 interactions */                                                           \
+  /* interactrions with VK_KHR_synchronization2 */                                                     \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_QUEUE_FAMILY_CHECKPOINT_PROPERTIES_2_NV)                         \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_CHECKPOINT_DATA_2_NV)                                            \
                                                                                                        \
@@ -1269,11 +1417,21 @@ SERIALISE_VK_HANDLES();
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DIAGNOSTICS_CONFIG_FEATURES_NV)                  \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_DEVICE_DIAGNOSTICS_CONFIG_CREATE_INFO_NV)                        \
                                                                                                        \
+  /* VK_NV_external_memory_rdma */                                                                     \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_MEMORY_GET_REMOTE_ADDRESS_INFO_NV)                               \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_RDMA_FEATURES_NV)                \
+                                                                                                       \
   /* VK_NV_fragment_coverage_to_color */                                                               \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_TO_COLOR_STATE_CREATE_INFO_NV)                 \
                                                                                                        \
   /* VK_NV_framebuffer_mixed_samples */                                                                \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_MODULATION_STATE_CREATE_INFO_NV)               \
+  /* Interaction with VK_KHR_dynamic_rendering */                                                      \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_ATTACHMENT_SAMPLE_COUNT_INFO_NV)                                 \
+                                                                                                       \
+  /* VK_NV_inherited_viewport_scissor */                                                               \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INHERITED_VIEWPORT_SCISSOR_FEATURES_NV)          \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_VIEWPORT_SCISSOR_INFO_NV)             \
                                                                                                        \
   /* VK_NVX_image_view_handle */                                                                       \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_IMAGE_VIEW_HANDLE_INFO_NVX)                                      \
@@ -1295,6 +1453,11 @@ SERIALISE_VK_HANDLES();
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_NV)                             \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV)                         \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_NV)                  \
+                                                                                                       \
+  /* VK_NV_ray_tracing_motion_blur */                                                                  \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_MOTION_TRIANGLES_DATA_NV)        \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_MOTION_BLUR_FEATURES_NV)             \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MOTION_INFO_NV)                           \
                                                                                                        \
   /* VK_NV_representative_fragment_test */                                                             \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_REPRESENTATIVE_FRAGMENT_TEST_FEATURES_NV)        \
@@ -1322,6 +1485,11 @@ SERIALISE_VK_HANDLES();
   /* VK_NV_viewport_swizzle */                                                                         \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_SWIZZLE_STATE_CREATE_INFO_NV)                  \
                                                                                                        \
+  /* VK_NVX_binary_import */                                                                           \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_CU_MODULE_CREATE_INFO_NVX)                                       \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_CU_FUNCTION_CREATE_INFO_NVX)                                     \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_CU_LAUNCH_INFO_NVX)                                              \
+                                                                                                       \
   /* VK_NVX_device_generated_commands */                                                               \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_PROPERTIES_NV)         \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_GRAPHICS_SHADER_GROUP_CREATE_INFO_NV)                            \
@@ -1334,6 +1502,8 @@ SERIALISE_VK_HANDLES();
                                                                                                        \
   /* VK_NVX_multiview_per_view_attributes */                                                           \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PER_VIEW_ATTRIBUTES_PROPERTIES_NVX)    \
+  /* Interaction with VK_KHR_dynamic_rendering */                                                      \
+  PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_MULTIVIEW_PER_VIEW_ATTRIBUTES_INFO_NVX)                          \
                                                                                                        \
   /* VK_QCOM_render_pass_transform */                                                                  \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDER_PASS_TRANSFORM_INFO_QCOM)      \
@@ -1345,6 +1515,9 @@ SERIALISE_VK_HANDLES();
   /* VK_VALVE_mutable_descriptor_type */                                                               \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_VALVE)          \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_VALVE)
+
+static const rdcliteral pNextName = "pNext"_lit;
+static const rdcliteral pNextTypeName = "pNextType"_lit;
 
 template <typename SerialiserType>
 static void SerialiseNext(SerialiserType &ser, VkStructureType &sType, const void *&pNext)
@@ -1387,19 +1560,20 @@ static void SerialiseNext(SerialiserType &ser, VkStructureType &sType, const voi
   }
 
 // if we come across a struct we should process, then serialise a pointer to it.
-#define PNEXT_STRUCT(StructType, StructName)        \
-  case StructType:                                  \
-  {                                                 \
-    StructName *nextStruct = NULL;                  \
-    ser.SerialiseNullable("pNext"_lit, nextStruct); \
-    pNext = nextStruct;                             \
-    handled = true;                                 \
-    break;                                          \
+#define PNEXT_STRUCT(StructType, StructName)                     \
+  case StructType:                                               \
+  {                                                              \
+    ser.SerialiseNullable(pNextName, (StructName *&)nextStruct); \
+    pNext = nextStruct;                                          \
+    handled = true;                                              \
+    break;                                                       \
   }
 
     // we don't want a default case to ensure we get a compile error if we forget to implement a
     // structure type, but we also want to error if the input is invalid, so have this flag here.
     bool handled = false;
+
+    void *nextStruct = NULL;
 
     // this serialises the pNext with the right type, as nullable. We already know from above that
     // there IS something here, so the nullable is redundant but convenient
@@ -1437,15 +1611,15 @@ static void SerialiseNext(SerialiserType &ser, VkStructureType &sType, const voi
 // We don't have to go any further, the act of serialising this struct will walk the chain further,
 // so we can return immediately.
 #undef PNEXT_STRUCT
-#define PNEXT_STRUCT(StructType, StructName)          \
-  case StructType:                                    \
-  {                                                   \
-    VkStructureType *nextType = &next->sType;         \
-    ser.SerialiseNullable("pNextType"_lit, nextType); \
-    StructName *actual = (StructName *)next;          \
-    ser.SerialiseNullable("pNext"_lit, actual);       \
-    handled = true;                                   \
-    return;                                           \
+#define PNEXT_STRUCT(StructType, StructName)                       \
+  case StructType:                                                 \
+  {                                                                \
+    nextType = &next->sType;                                       \
+    ser.SerialiseNullable(pNextTypeName, nextType);                \
+    actualStruct = (void *)next;                                   \
+    ser.SerialiseNullable(pNextName, (StructName *&)actualStruct); \
+    handled = true;                                                \
+    return;                                                        \
   }
 
     // we don't want a default case to ensure we get a compile error if we forget to implement a
@@ -1454,6 +1628,8 @@ static void SerialiseNext(SerialiserType &ser, VkStructureType &sType, const voi
 
     // walk the pNext chain, skipping any structs we don't care about serialising.
     VkBaseInStructure *next = (VkBaseInStructure *)pNext;
+    VkStructureType *nextType = NULL;
+    void *actualStruct = NULL;
 
     while(next)
     {
@@ -3979,6 +4155,22 @@ void Deserialise(const VkPhysicalDeviceYcbcrImageArraysFeaturesEXT &el)
 }
 
 template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceYcbcr2Plane444FormatsFeaturesEXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_YCBCR_2_PLANE_444_FORMATS_FEATURES_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(ycbcr2plane444Formats);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceYcbcr2Plane444FormatsFeaturesEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
 void DoSerialise(SerialiserType &ser, VkPhysicalDeviceTimelineSemaphoreFeatures &el)
 {
   RDCASSERT(ser.IsReading() ||
@@ -4526,6 +4718,7 @@ template <>
 void Deserialise(const VkSubpassDescriptionDepthStencilResolve &el)
 {
   DeserialiseNext(el.pNext);
+  delete el.pDepthStencilResolveAttachment;
 }
 
 template <typename SerialiserType>
@@ -4728,6 +4921,59 @@ void Deserialise(const VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT &el)
 }
 
 template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceVertexInputDynamicStateFeaturesEXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_INPUT_DYNAMIC_STATE_FEATURES_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(vertexInputDynamicState);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceVertexInputDynamicStateFeaturesEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkVertexInputBindingDescription2EXT &el)
+{
+  RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(binding);
+  SERIALISE_MEMBER(stride);
+  SERIALISE_MEMBER(inputRate);
+  SERIALISE_MEMBER(divisor);
+}
+
+template <>
+void Deserialise(const VkVertexInputBindingDescription2EXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkVertexInputAttributeDescription2EXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(location);
+  SERIALISE_MEMBER(binding);
+  SERIALISE_MEMBER(format);
+  SERIALISE_MEMBER(offset);
+}
+
+template <>
+void Deserialise(const VkVertexInputAttributeDescription2EXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
 void DoSerialise(SerialiserType &ser, VkPhysicalDevice8BitStorageFeatures &el)
 {
   RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES);
@@ -4846,6 +5092,71 @@ template <>
 void Deserialise(const VkDescriptorSetLayoutSupport &el)
 {
   DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceMaintenance4PropertiesKHR &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(maxBufferSize);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceMaintenance4PropertiesKHR &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceMaintenance4FeaturesKHR &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(maintenance4);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceMaintenance4FeaturesKHR &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkDeviceBufferMemoryRequirementsKHR &el)
+{
+  RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_DEVICE_BUFFER_MEMORY_REQUIREMENTS_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER_OPT(pCreateInfo);
+}
+
+template <>
+void Deserialise(const VkDeviceBufferMemoryRequirementsKHR &el)
+{
+  DeserialiseNext(el.pNext);
+  delete el.pCreateInfo;
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkDeviceImageMemoryRequirementsKHR &el)
+{
+  RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER_OPT(pCreateInfo);
+  SERIALISE_MEMBER(planeAspect);
+}
+
+template <>
+void Deserialise(const VkDeviceImageMemoryRequirementsKHR &el)
+{
+  DeserialiseNext(el.pNext);
+  delete el.pCreateInfo;
 }
 
 template <typename SerialiserType>
@@ -5015,6 +5326,24 @@ void Deserialise(const VkPhysicalDeviceExtendedDynamicStateFeaturesEXT &el)
 }
 
 template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceExtendedDynamicState2FeaturesEXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(extendedDynamicState2);
+  SERIALISE_MEMBER(extendedDynamicState2LogicOp);
+  SERIALISE_MEMBER(extendedDynamicState2PatchControlPoints);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceExtendedDynamicState2FeaturesEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
 void DoSerialise(SerialiserType &ser, VkPhysicalDeviceFragmentDensityMapFeaturesEXT &el)
 {
   RDCASSERT(ser.IsReading() ||
@@ -5062,6 +5391,41 @@ void DoSerialise(SerialiserType &ser, VkPhysicalDeviceFragmentDensityMapProperti
 
 template <>
 void Deserialise(const VkPhysicalDeviceFragmentDensityMapPropertiesEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceFragmentDensityMap2FeaturesEXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_2_FEATURES_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(fragmentDensityMapDeferred);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceFragmentDensityMap2FeaturesEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceFragmentDensityMap2PropertiesEXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_2_PROPERTIES_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(subsampledLoads);
+  SERIALISE_MEMBER(subsampledCoarseReconstructionEarlyAccess);
+  SERIALISE_MEMBER(maxSubsampledArrayLayers);
+  SERIALISE_MEMBER(maxDescriptorSetSubsampledSamplers);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceFragmentDensityMap2PropertiesEXT &el)
 {
   DeserialiseNext(el.pNext);
 }
@@ -5250,6 +5614,53 @@ void DoSerialise(SerialiserType &ser, VkPipelineExecutableInternalRepresentation
 
 template <>
 void Deserialise(const VkPipelineExecutableInternalRepresentationKHR &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPresentIdKHR &el)
+{
+  RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_PRESENT_ID_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(swapchainCount);
+  SERIALISE_MEMBER_ARRAY(pPresentIds, swapchainCount);
+}
+
+template <>
+void Deserialise(const VkPresentIdKHR &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDevicePresentIdFeaturesKHR &el)
+{
+  RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(presentId);
+}
+
+template <>
+void Deserialise(const VkPhysicalDevicePresentIdFeaturesKHR &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDevicePresentWaitFeaturesKHR &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(presentWait);
+}
+
+template <>
+void Deserialise(const VkPhysicalDevicePresentWaitFeaturesKHR &el)
 {
   DeserialiseNext(el.pNext);
 }
@@ -5969,6 +6380,22 @@ void DoSerialise(SerialiserType &ser, VkPrivateDataSlotCreateInfoEXT &el)
 
 template <>
 void Deserialise(const VkPrivateDataSlotCreateInfoEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceRGBA10X6FormatsFeaturesEXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RGBA10X6_FORMATS_FEATURES_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(formatRgba10x6WithoutYCbCrSampler);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceRGBA10X6FormatsFeaturesEXT &el)
 {
   DeserialiseNext(el.pNext);
 }
@@ -7008,6 +7435,128 @@ void Deserialise(const VkPhysicalDeviceDriverProperties &el)
 }
 
 template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceDynamicRenderingFeaturesKHR &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(dynamicRendering);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceDynamicRenderingFeaturesKHR &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkRenderingFragmentDensityMapAttachmentInfoEXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_INFO_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(imageView);
+  SERIALISE_MEMBER(imageLayout);
+}
+
+template <>
+void Deserialise(const VkRenderingFragmentDensityMapAttachmentInfoEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkCommandBufferInheritanceRenderingInfoKHR &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(viewMask);
+  SERIALISE_MEMBER(colorAttachmentCount);
+  SERIALISE_MEMBER_ARRAY(pColorAttachmentFormats, colorAttachmentCount);
+  SERIALISE_MEMBER(depthAttachmentFormat);
+  SERIALISE_MEMBER(stencilAttachmentFormat);
+  SERIALISE_MEMBER(rasterizationSamples);
+}
+
+template <>
+void Deserialise(const VkCommandBufferInheritanceRenderingInfoKHR &el)
+{
+  DeserialiseNext(el.pNext);
+  delete[] el.pColorAttachmentFormats;
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPipelineRenderingCreateInfoKHR &el)
+{
+  RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(viewMask);
+  SERIALISE_MEMBER(colorAttachmentCount);
+  SERIALISE_MEMBER_ARRAY(pColorAttachmentFormats, colorAttachmentCount);
+  SERIALISE_MEMBER(depthAttachmentFormat);
+  SERIALISE_MEMBER(stencilAttachmentFormat);
+}
+
+template <>
+void Deserialise(const VkPipelineRenderingCreateInfoKHR &el)
+{
+  DeserialiseNext(el.pNext);
+  delete[] el.pColorAttachmentFormats;
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkRenderingAttachmentInfoKHR &el)
+{
+  RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(imageView);
+  SERIALISE_MEMBER(imageLayout);
+  SERIALISE_MEMBER(resolveMode);
+  SERIALISE_MEMBER(resolveImageView);
+  SERIALISE_MEMBER(resolveImageLayout);
+  SERIALISE_MEMBER(loadOp);
+  SERIALISE_MEMBER(storeOp);
+  SERIALISE_MEMBER(clearValue);
+}
+
+template <>
+void Deserialise(const VkRenderingAttachmentInfoKHR &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkRenderingInfoKHR &el)
+{
+  RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_RENDERING_INFO_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER_VKFLAGS(VkRenderingFlagsKHR, flags).Important();
+  SERIALISE_MEMBER(renderArea);
+  SERIALISE_MEMBER(layerCount);
+  SERIALISE_MEMBER(viewMask);
+  SERIALISE_MEMBER(colorAttachmentCount).Important();
+  SERIALISE_MEMBER_ARRAY(pColorAttachments, colorAttachmentCount);
+  SERIALISE_MEMBER_OPT(pDepthAttachment);
+  SERIALISE_MEMBER_OPT(pStencilAttachment);
+}
+
+template <>
+void Deserialise(const VkRenderingInfoKHR &el)
+{
+  DeserialiseNext(el.pNext);
+  delete[] el.pColorAttachments;
+  delete el.pDepthAttachment;
+  delete el.pStencilAttachment;
+}
+
+template <typename SerialiserType>
 void DoSerialise(SerialiserType &ser, VkPhysicalDeviceExternalFenceInfo &el)
 {
   RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_FENCE_INFO);
@@ -7371,6 +7920,38 @@ void Deserialise(const VkCalibratedTimestampInfoEXT &el)
 }
 
 template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceColorWriteEnableFeaturesEXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COLOR_WRITE_ENABLE_FEATURES_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(colorWriteEnable);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceColorWriteEnableFeaturesEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPipelineColorWriteCreateInfoEXT &el)
+{
+  RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_PIPELINE_COLOR_WRITE_CREATE_INFO_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(attachmentCount);
+  SERIALISE_MEMBER_ARRAY(pColorWriteEnables, attachmentCount);
+}
+
+template <>
+void Deserialise(const VkPipelineColorWriteCreateInfoEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
 void DoSerialise(SerialiserType &ser, VkSwapchainCounterCreateInfoEXT &el)
 {
   RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_SWAPCHAIN_COUNTER_CREATE_INFO_EXT);
@@ -7503,6 +8084,39 @@ void DoSerialise(SerialiserType &ser, VkDeviceQueueGlobalPriorityCreateInfoEXT &
 
 template <>
 void Deserialise(const VkDeviceQueueGlobalPriorityCreateInfoEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceGlobalPriorityQueryFeaturesEXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GLOBAL_PRIORITY_QUERY_FEATURES_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(globalPriorityQuery);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceGlobalPriorityQueryFeaturesEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkQueueFamilyGlobalPriorityPropertiesEXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_QUEUE_FAMILY_GLOBAL_PRIORITY_PROPERTIES_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(priorityCount);
+  SERIALISE_MEMBER(priorities);
+}
+
+template <>
+void Deserialise(const VkQueueFamilyGlobalPriorityPropertiesEXT &el)
 {
   DeserialiseNext(el.pNext);
 }
@@ -7699,6 +8313,84 @@ void Deserialise(const VkPhysicalDeviceShaderSubgroupExtendedTypesFeatures &el)
 }
 
 template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceShaderIntegerDotProductFeaturesKHR &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(shaderIntegerDotProduct);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceShaderIntegerDotProductFeaturesKHR &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceShaderIntegerDotProductPropertiesKHR &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_PROPERTIES_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(integerDotProduct8BitUnsignedAccelerated);
+  SERIALISE_MEMBER(integerDotProduct8BitSignedAccelerated);
+  SERIALISE_MEMBER(integerDotProduct8BitMixedSignednessAccelerated);
+  SERIALISE_MEMBER(integerDotProduct4x8BitPackedUnsignedAccelerated);
+  SERIALISE_MEMBER(integerDotProduct4x8BitPackedSignedAccelerated);
+  SERIALISE_MEMBER(integerDotProduct4x8BitPackedMixedSignednessAccelerated);
+  SERIALISE_MEMBER(integerDotProduct16BitUnsignedAccelerated);
+  SERIALISE_MEMBER(integerDotProduct16BitSignedAccelerated);
+  SERIALISE_MEMBER(integerDotProduct16BitMixedSignednessAccelerated);
+  SERIALISE_MEMBER(integerDotProduct32BitUnsignedAccelerated);
+  SERIALISE_MEMBER(integerDotProduct32BitSignedAccelerated);
+  SERIALISE_MEMBER(integerDotProduct32BitMixedSignednessAccelerated);
+  SERIALISE_MEMBER(integerDotProduct64BitUnsignedAccelerated);
+  SERIALISE_MEMBER(integerDotProduct64BitSignedAccelerated);
+  SERIALISE_MEMBER(integerDotProduct64BitMixedSignednessAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating8BitUnsignedAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating8BitSignedAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating8BitMixedSignednessAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating4x8BitPackedUnsignedAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating4x8BitPackedSignedAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating4x8BitPackedMixedSignednessAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating16BitUnsignedAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating16BitSignedAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating16BitMixedSignednessAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating32BitUnsignedAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating32BitSignedAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating32BitMixedSignednessAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating64BitUnsignedAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating64BitSignedAccelerated);
+  SERIALISE_MEMBER(integerDotProductAccumulatingSaturating64BitMixedSignednessAccelerated);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceShaderIntegerDotProductPropertiesKHR &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceShaderSubgroupUniformControlFlowFeaturesKHR &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType ==
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_UNIFORM_CONTROL_FLOW_FEATURES_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(shaderSubgroupUniformControlFlow);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceShaderSubgroupUniformControlFlowFeaturesKHR &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
 void DoSerialise(SerialiserType &ser, VkPhysicalDeviceMemoryPriorityFeaturesEXT &el)
 {
   RDCASSERT(ser.IsReading() ||
@@ -7833,6 +8525,33 @@ void DoSerialise(SerialiserType &ser, VkPhysicalDeviceShaderAtomicFloatFeaturesE
 
 template <>
 void Deserialise(const VkPhysicalDeviceShaderAtomicFloatFeaturesEXT &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceShaderAtomicFloat2FeaturesEXT &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_2_FEATURES_EXT);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(shaderBufferFloat16Atomics);
+  SERIALISE_MEMBER(shaderBufferFloat16AtomicAdd);
+  SERIALISE_MEMBER(shaderBufferFloat16AtomicMinMax);
+  SERIALISE_MEMBER(shaderBufferFloat32AtomicMinMax);
+  SERIALISE_MEMBER(shaderBufferFloat64AtomicMinMax);
+  SERIALISE_MEMBER(shaderSharedFloat16Atomics);
+  SERIALISE_MEMBER(shaderSharedFloat16AtomicAdd);
+  SERIALISE_MEMBER(shaderSharedFloat16AtomicMinMax);
+  SERIALISE_MEMBER(shaderSharedFloat32AtomicMinMax);
+  SERIALISE_MEMBER(shaderSharedFloat64AtomicMinMax);
+  SERIALISE_MEMBER(shaderImageFloat32AtomicMinMax);
+  SERIALISE_MEMBER(sparseImageFloat32AtomicMinMax);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceShaderAtomicFloat2FeaturesEXT &el)
 {
   DeserialiseNext(el.pNext);
 }
@@ -8732,6 +9451,23 @@ void Deserialise(const VkFormatProperties2 &el)
 }
 
 template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkFormatProperties3KHR &el)
+{
+  RDCASSERT(ser.IsReading() || el.sType == VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER_VKFLAGS(VkFormatFeatureFlags2KHR, linearTilingFeatures);
+  SERIALISE_MEMBER_VKFLAGS(VkFormatFeatureFlags2KHR, optimalTilingFeatures);
+  SERIALISE_MEMBER_VKFLAGS(VkFormatFeatureFlags2KHR, bufferFeatures);
+}
+
+template <>
+void Deserialise(const VkFormatProperties3KHR &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
 void DoSerialise(SerialiserType &ser, VkImageFormatProperties &el)
 {
   SERIALISE_MEMBER(maxExtent);
@@ -9127,6 +9863,7 @@ INSTANTIATE_SERIALISE_TYPE(VkCalibratedTimestampInfoEXT);
 INSTANTIATE_SERIALISE_TYPE(VkCommandBufferAllocateInfo);
 INSTANTIATE_SERIALISE_TYPE(VkCommandBufferBeginInfo);
 INSTANTIATE_SERIALISE_TYPE(VkCommandBufferInheritanceConditionalRenderingInfoEXT);
+INSTANTIATE_SERIALISE_TYPE(VkCommandBufferInheritanceRenderingInfoKHR);
 INSTANTIATE_SERIALISE_TYPE(VkCommandBufferInheritanceInfo);
 INSTANTIATE_SERIALISE_TYPE(VkCommandBufferSubmitInfoKHR);
 INSTANTIATE_SERIALISE_TYPE(VkCommandPoolCreateInfo);
@@ -9158,6 +9895,7 @@ INSTANTIATE_SERIALISE_TYPE(VkDescriptorSetLayoutSupport);
 INSTANTIATE_SERIALISE_TYPE(VkDescriptorSetVariableDescriptorCountAllocateInfo)
 INSTANTIATE_SERIALISE_TYPE(VkDescriptorSetVariableDescriptorCountLayoutSupport)
 INSTANTIATE_SERIALISE_TYPE(VkDescriptorUpdateTemplateCreateInfo);
+INSTANTIATE_SERIALISE_TYPE(VkDeviceBufferMemoryRequirementsKHR);
 INSTANTIATE_SERIALISE_TYPE(VkDeviceCreateInfo);
 INSTANTIATE_SERIALISE_TYPE(VkDeviceEventInfoEXT);
 INSTANTIATE_SERIALISE_TYPE(VkDeviceGroupBindSparseInfo);
@@ -9168,6 +9906,7 @@ INSTANTIATE_SERIALISE_TYPE(VkDeviceGroupPresentInfoKHR);
 INSTANTIATE_SERIALISE_TYPE(VkDeviceGroupRenderPassBeginInfo);
 INSTANTIATE_SERIALISE_TYPE(VkDeviceGroupSubmitInfo);
 INSTANTIATE_SERIALISE_TYPE(VkDeviceGroupSwapchainCreateInfoKHR);
+INSTANTIATE_SERIALISE_TYPE(VkDeviceImageMemoryRequirementsKHR);
 INSTANTIATE_SERIALISE_TYPE(VkDeviceMemoryOpaqueCaptureAddressInfo);
 INSTANTIATE_SERIALISE_TYPE(VkDevicePrivateDataCreateInfoEXT);
 INSTANTIATE_SERIALISE_TYPE(VkDeviceQueueCreateInfo);
@@ -9198,6 +9937,7 @@ INSTANTIATE_SERIALISE_TYPE(VkFenceCreateInfo);
 INSTANTIATE_SERIALISE_TYPE(VkFenceGetFdInfoKHR);
 INSTANTIATE_SERIALISE_TYPE(VkFilterCubicImageViewImageFormatPropertiesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkFormatProperties2);
+INSTANTIATE_SERIALISE_TYPE(VkFormatProperties3KHR);
 INSTANTIATE_SERIALISE_TYPE(VkFramebufferAttachmentImageInfo);
 INSTANTIATE_SERIALISE_TYPE(VkFramebufferAttachmentsCreateInfo);
 INSTANTIATE_SERIALISE_TYPE(VkFramebufferCreateInfo);
@@ -9248,6 +9988,7 @@ INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceASTCDecodeFeaturesEXT)
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceBufferDeviceAddressFeatures);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceBufferDeviceAddressFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceCoherentMemoryFeaturesAMD);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceColorWriteEnableFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceComputeShaderDerivativesFeaturesNV);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceConditionalRenderingFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceConservativeRasterizationPropertiesEXT);
@@ -9259,7 +10000,9 @@ INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceDescriptorIndexingFeatures)
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceDescriptorIndexingProperties)
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceDiscardRectanglePropertiesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceDriverProperties);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceDynamicRenderingFeaturesKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceExtendedDynamicStateFeaturesEXT);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceExtendedDynamicState2FeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceExternalBufferInfo);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceExternalFenceInfo);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceExternalImageFormatInfo);
@@ -9268,8 +10011,11 @@ INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceFeatures2);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceFloatControlsProperties);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceFragmentDensityMapFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceFragmentDensityMapPropertiesEXT);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceFragmentDensityMap2FeaturesEXT);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceFragmentDensityMap2PropertiesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceGlobalPriorityQueryFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceGroupProperties);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceHostQueryResetFeatures);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceIDProperties);
@@ -9281,6 +10027,8 @@ INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceIndexTypeUint8FeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceLineRasterizationFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceLineRasterizationPropertiesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceMaintenance3Properties);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceMaintenance4FeaturesKHR);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceMaintenance4PropertiesKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceMemoryBudgetPropertiesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceMemoryPriorityFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceMemoryProperties2);
@@ -9293,10 +10041,13 @@ INSTANTIATE_SERIALISE_TYPE(VkPhysicalDevicePipelineCreationCacheControlFeaturesE
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDevicePointClippingProperties);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDevicePrivateDataFeaturesEXT);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDevicePresentIdFeaturesKHR);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDevicePresentWaitFeaturesKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceProperties2);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceProtectedMemoryFeatures);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceProtectedMemoryProperties);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDevicePushDescriptorPropertiesKHR);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceRGBA10X6FormatsFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceRobustness2FeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceRobustness2PropertiesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceSampleLocationsPropertiesEXT);
@@ -9305,6 +10056,7 @@ INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceSamplerYcbcrConversionFeatures);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceScalarBlockLayoutFeatures);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderAtomicFloatFeaturesEXT);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderAtomicFloat2FeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderAtomicInt64Features);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderClockFeaturesKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderCorePropertiesAMD);
@@ -9313,7 +10065,10 @@ INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderDrawParametersFeatures);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderFloat16Int8Features);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderImageAtomicInt64FeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderImageFootprintFeaturesNV);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderIntegerDotProductFeaturesKHR);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderIntegerDotProductPropertiesKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderSubgroupExtendedTypesFeatures);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderSubgroupUniformControlFlowFeaturesKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceShaderTerminateInvocationFeaturesKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceSparseImageFormatInfo2);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceSubgroupProperties);
@@ -9332,16 +10087,19 @@ INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceUniformBufferStandardLayoutFeatures);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceVariablePointerFeatures);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceVertexInputDynamicStateFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceVulkan11Features);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceVulkan11Properties);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceVulkan12Features);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceVulkan12Properties);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceVulkanMemoryModelFeatures);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceWorkgroupMemoryExplicitLayoutFeaturesKHR);
+INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceYcbcr2Plane444FormatsFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceYcbcrImageArraysFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPhysicalDeviceZeroInitializeWorkgroupMemoryFeaturesKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineCacheCreateInfo);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineColorBlendStateCreateInfo);
+INSTANTIATE_SERIALISE_TYPE(VkPipelineColorWriteCreateInfoEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineCreationFeedbackCreateInfoEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineDepthStencilStateCreateInfo);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineDiscardRectangleStateCreateInfoEXT);
@@ -9359,6 +10117,7 @@ INSTANTIATE_SERIALISE_TYPE(VkPipelineRasterizationDepthClipStateCreateInfoEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineRasterizationLineStateCreateInfoEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineRasterizationStateCreateInfo);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineRasterizationStateStreamCreateInfoEXT);
+INSTANTIATE_SERIALISE_TYPE(VkPipelineRenderingCreateInfoKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineSampleLocationsStateCreateInfoEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineShaderStageCreateInfo);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT);
@@ -9367,6 +10126,7 @@ INSTANTIATE_SERIALISE_TYPE(VkPipelineTessellationStateCreateInfo);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineVertexInputDivisorStateCreateInfoEXT);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineVertexInputStateCreateInfo);
 INSTANTIATE_SERIALISE_TYPE(VkPipelineViewportStateCreateInfo);
+INSTANTIATE_SERIALISE_TYPE(VkPresentIdKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPresentInfoKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPresentRegionsKHR);
 INSTANTIATE_SERIALISE_TYPE(VkPresentTimeGOOGLE);
@@ -9375,8 +10135,12 @@ INSTANTIATE_SERIALISE_TYPE(VkPrivateDataSlotCreateInfoEXT);
 INSTANTIATE_SERIALISE_TYPE(VkProtectedSubmitInfo);
 INSTANTIATE_SERIALISE_TYPE(VkQueryPoolCreateInfo);
 INSTANTIATE_SERIALISE_TYPE(VkQueryPoolPerformanceCreateInfoKHR);
+INSTANTIATE_SERIALISE_TYPE(VkQueueFamilyGlobalPriorityPropertiesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkQueueFamilyProperties2);
 INSTANTIATE_SERIALISE_TYPE(VkRefreshCycleDurationGOOGLE);
+INSTANTIATE_SERIALISE_TYPE(VkRenderingAttachmentInfoKHR);
+INSTANTIATE_SERIALISE_TYPE(VkRenderingFragmentDensityMapAttachmentInfoEXT);
+INSTANTIATE_SERIALISE_TYPE(VkRenderingInfoKHR);
 INSTANTIATE_SERIALISE_TYPE(VkRenderPassAttachmentBeginInfo);
 INSTANTIATE_SERIALISE_TYPE(VkRenderPassBeginInfo);
 INSTANTIATE_SERIALISE_TYPE(VkRenderPassCreateInfo);
@@ -9424,6 +10188,8 @@ INSTANTIATE_SERIALISE_TYPE(VkTimelineSemaphoreSubmitInfo);
 INSTANTIATE_SERIALISE_TYPE(VkValidationCacheCreateInfoEXT);
 INSTANTIATE_SERIALISE_TYPE(VkValidationFeaturesEXT);
 INSTANTIATE_SERIALISE_TYPE(VkValidationFlagsEXT);
+INSTANTIATE_SERIALISE_TYPE(VkVertexInputAttributeDescription2EXT);
+INSTANTIATE_SERIALISE_TYPE(VkVertexInputBindingDescription2EXT);
 INSTANTIATE_SERIALISE_TYPE(VkWriteDescriptorSet);
 
 // plain structs with no next chain
@@ -10128,10 +10894,34 @@ void Deserialise(const VkImportAndroidHardwareBufferInfoANDROID &el)
   DeserialiseNext(el.pNext);
 }
 
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkAndroidHardwareBufferFormatProperties2ANDROID &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_2_ANDROID);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(format);
+  SERIALISE_MEMBER(externalFormat);
+  SERIALISE_MEMBER_VKFLAGS(VkFormatFeatureFlags2KHR, formatFeatures);
+  SERIALISE_MEMBER(samplerYcbcrConversionComponents);
+  SERIALISE_MEMBER(suggestedYcbcrModel);
+  SERIALISE_MEMBER(suggestedYcbcrRange);
+  SERIALISE_MEMBER(suggestedXChromaOffset);
+  SERIALISE_MEMBER(suggestedYChromaOffset);
+}
+
+template <>
+void Deserialise(const VkAndroidHardwareBufferFormatProperties2ANDROID &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
 INSTANTIATE_SERIALISE_TYPE(VkAndroidHardwareBufferUsageANDROID);
 INSTANTIATE_SERIALISE_TYPE(VkAndroidHardwareBufferPropertiesANDROID);
 INSTANTIATE_SERIALISE_TYPE(VkAndroidHardwareBufferFormatPropertiesANDROID);
 INSTANTIATE_SERIALISE_TYPE(VkImportAndroidHardwareBufferInfoANDROID);
 INSTANTIATE_SERIALISE_TYPE(VkMemoryGetAndroidHardwareBufferInfoANDROID);
 INSTANTIATE_SERIALISE_TYPE(VkExternalFormatANDROID);
+INSTANTIATE_SERIALISE_TYPE(VkAndroidHardwareBufferFormatProperties2ANDROID);
 #endif

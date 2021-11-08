@@ -23,6 +23,7 @@
  ******************************************************************************/
 
 #include "../vk_core.h"
+#include "../vk_debug.h"
 #include "api/replay/version.h"
 
 static char fakeRenderDocUUID[VK_UUID_SIZE] = {};
@@ -39,7 +40,7 @@ void MakeFakeUUID()
     // need a null terminator as it's a fixed size non-string array)
     rdcstr uuid = StringFormat::sntimef(Timing::GetUTCTime(), "rdoc%y%m%d%H%M%S");
     RDCASSERT(uuid.size() == sizeof(fakeRenderDocUUID));
-    memcpy(fakeRenderDocUUID, uuid.c_str(), RDCMIN(VK_UUID_SIZE, uuid.count()));
+    memcpy(fakeRenderDocUUID, uuid.c_str(), RDCMIN((size_t)VK_UUID_SIZE, uuid.size()));
   }
 }
 
@@ -280,6 +281,235 @@ void WrappedVulkan::vkGetImageSparseMemoryRequirements(
                                                     pSparseMemoryRequirements);
 }
 
+void WrappedVulkan::vkGetDeviceBufferMemoryRequirementsKHR(
+    VkDevice device, const VkDeviceBufferMemoryRequirementsKHR *pInfo,
+    VkMemoryRequirements2 *pMemoryRequirements)
+{
+  byte *tempMem = GetTempMemory(GetNextPatchSize(pInfo));
+  VkDeviceBufferMemoryRequirementsKHR *unwrappedInfo = UnwrapStructAndChain(m_State, tempMem, pInfo);
+
+  VkBufferCreateInfo *info = (VkBufferCreateInfo *)unwrappedInfo->pCreateInfo;
+
+  // patch the create info the same as we would for vkCreateBuffer
+  info->usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  info->usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+  if(IsCaptureMode(m_State) && (info->usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT))
+    info->flags |= VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT;
+
+  ObjDisp(device)->GetDeviceBufferMemoryRequirementsKHR(Unwrap(device), unwrappedInfo,
+                                                        pMemoryRequirements);
+
+  // if the buffer is external, create a non-external and return the worst case memory requirements
+  // so that the memory allocated is sufficient for us on replay when the buffer is non-external
+  bool isExternal = FindNextStruct(unwrappedInfo->pCreateInfo,
+                                   VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO) != NULL;
+
+  if(isExternal)
+  {
+    bool removed =
+        RemoveNextStruct(unwrappedInfo, VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO);
+
+    RDCASSERTMSG("Couldn't find next struct indicating external memory", removed);
+
+    VkMemoryRequirements2 nonExternalReq = {};
+    nonExternalReq.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+
+    ObjDisp(device)->GetDeviceBufferMemoryRequirementsKHR(Unwrap(device), unwrappedInfo,
+                                                          &nonExternalReq);
+
+    pMemoryRequirements->memoryRequirements.size =
+        RDCMAX(pMemoryRequirements->memoryRequirements.size, nonExternalReq.memoryRequirements.size);
+    pMemoryRequirements->memoryRequirements.alignment =
+        RDCMAX(pMemoryRequirements->memoryRequirements.alignment,
+               nonExternalReq.memoryRequirements.alignment);
+
+    if((pMemoryRequirements->memoryRequirements.memoryTypeBits &
+        nonExternalReq.memoryRequirements.memoryTypeBits) == 0)
+    {
+      RDCWARN(
+          "External buffer shares no memory types with non-external buffer. This buffer "
+          "will not be replayable.");
+    }
+    else
+    {
+      pMemoryRequirements->memoryRequirements.memoryTypeBits &=
+          nonExternalReq.memoryRequirements.memoryTypeBits;
+    }
+  }
+}
+
+void WrappedVulkan::vkGetDeviceImageMemoryRequirementsKHR(
+    VkDevice device, const VkDeviceImageMemoryRequirementsKHR *pInfo,
+    VkMemoryRequirements2 *pMemoryRequirements)
+{
+  size_t tempMemSize = GetNextPatchSize(pInfo);
+
+  // reserve space for a patched view format list if necessary
+  if(pInfo->pCreateInfo->samples != VK_SAMPLE_COUNT_1_BIT)
+  {
+    const VkImageFormatListCreateInfo *formatListInfo =
+        (const VkImageFormatListCreateInfo *)FindNextStruct(
+            pInfo->pCreateInfo, VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO);
+
+    if(formatListInfo)
+      tempMemSize += sizeof(VkFormat) * (formatListInfo->viewFormatCount + 1);
+  }
+
+  byte *tempMem = GetTempMemory(tempMemSize);
+  VkDeviceImageMemoryRequirementsKHR *unwrappedInfo = UnwrapStructAndChain(m_State, tempMem, pInfo);
+
+  VkImageCreateInfo *info = (VkImageCreateInfo *)unwrappedInfo->pCreateInfo;
+
+  info->usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+  if(IsCaptureMode(m_State))
+  {
+    info->usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    info->usage &= ~VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+  }
+
+  if(IsYUVFormat(info->format))
+    info->flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+
+  if(info->samples != VK_SAMPLE_COUNT_1_BIT)
+  {
+    info->usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    info->flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+
+    if(IsCaptureMode(m_State))
+    {
+      if(!IsDepthOrStencilFormat(info->format))
+      {
+        if(GetDebugManager() && GetShaderCache()->IsArray2MSSupported())
+          info->usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+      }
+      else
+      {
+        info->usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+      }
+    }
+  }
+
+  info->flags &= ~VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT;
+
+  VkImageStencilUsageCreateInfo *separateStencilUsage =
+      (VkImageStencilUsageCreateInfo *)FindNextStruct(
+          info, VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO);
+  if(separateStencilUsage)
+  {
+    separateStencilUsage->stencilUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+    if(IsCaptureMode(m_State))
+    {
+      info->usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+      info->usage &= ~VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+    }
+
+    if(info->samples != VK_SAMPLE_COUNT_1_BIT)
+    {
+      separateStencilUsage->stencilUsage |=
+          VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    }
+  }
+
+  // similarly for the image format list for MSAA textures, add the UINT cast format we will need
+  if(info->samples != VK_SAMPLE_COUNT_1_BIT)
+  {
+    VkImageFormatListCreateInfo *formatListInfo = (VkImageFormatListCreateInfo *)FindNextStruct(
+        info, VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO);
+
+    if(formatListInfo)
+    {
+      uint32_t bs = GetByteSize(1, 1, 1, info->format, 0);
+
+      VkFormat msaaCopyFormat = VK_FORMAT_UNDEFINED;
+      if(bs == 1)
+        msaaCopyFormat = VK_FORMAT_R8_UINT;
+      else if(bs == 2)
+        msaaCopyFormat = VK_FORMAT_R16_UINT;
+      else if(bs == 4)
+        msaaCopyFormat = VK_FORMAT_R32_UINT;
+      else if(bs == 8)
+        msaaCopyFormat = VK_FORMAT_R32G32_UINT;
+      else if(bs == 16)
+        msaaCopyFormat = VK_FORMAT_R32G32B32A32_UINT;
+
+      const VkFormat *oldFmts = formatListInfo->pViewFormats;
+      VkFormat *newFmts = (VkFormat *)tempMem;
+      formatListInfo->pViewFormats = newFmts;
+
+      bool needAdded = true;
+      uint32_t i = 0;
+      for(; i < formatListInfo->viewFormatCount; i++)
+      {
+        newFmts[i] = oldFmts[i];
+        if(newFmts[i] == msaaCopyFormat)
+          needAdded = false;
+      }
+
+      if(needAdded)
+      {
+        newFmts[i] = msaaCopyFormat;
+        formatListInfo->viewFormatCount++;
+      }
+    }
+  }
+
+  ObjDisp(device)->GetDeviceImageMemoryRequirementsKHR(Unwrap(device), unwrappedInfo,
+                                                       pMemoryRequirements);
+
+  // if the image is external, create a non-external and return the worst case memory requirements
+  // so that the memory allocated is sufficient for us on replay when the image is non-external
+  bool isExternal = FindNextStruct(unwrappedInfo->pCreateInfo,
+                                   VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO) != NULL;
+
+  if(isExternal)
+  {
+    bool removed =
+        RemoveNextStruct(unwrappedInfo, VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO);
+
+    RDCASSERTMSG("Couldn't find next struct indicating external memory", removed);
+
+    VkMemoryRequirements2 nonExternalReq = {};
+    nonExternalReq.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+
+    ObjDisp(device)->GetDeviceImageMemoryRequirementsKHR(Unwrap(device), unwrappedInfo,
+                                                         &nonExternalReq);
+
+    pMemoryRequirements->memoryRequirements.size =
+        RDCMAX(pMemoryRequirements->memoryRequirements.size, nonExternalReq.memoryRequirements.size);
+    pMemoryRequirements->memoryRequirements.alignment =
+        RDCMAX(pMemoryRequirements->memoryRequirements.alignment,
+               nonExternalReq.memoryRequirements.alignment);
+
+    if((pMemoryRequirements->memoryRequirements.memoryTypeBits &
+        nonExternalReq.memoryRequirements.memoryTypeBits) == 0)
+    {
+      RDCWARN(
+          "External image shares no memory types with non-external image. This image "
+          "will not be replayable.");
+    }
+    else
+    {
+      pMemoryRequirements->memoryRequirements.memoryTypeBits &=
+          nonExternalReq.memoryRequirements.memoryTypeBits;
+    }
+  }
+}
+
+void WrappedVulkan::vkGetDeviceImageSparseMemoryRequirementsKHR(
+    VkDevice device, const VkDeviceImageMemoryRequirementsKHR *pInfo,
+    uint32_t *pSparseMemoryRequirementCount,
+    VkSparseImageMemoryRequirements2 *pSparseMemoryRequirements)
+{
+  byte *tempMem = GetTempMemory(GetNextPatchSize(pInfo));
+  VkDeviceImageMemoryRequirementsKHR *unwrappedInfo = UnwrapStructAndChain(m_State, tempMem, pInfo);
+
+  ObjDisp(device)->GetDeviceImageSparseMemoryRequirementsKHR(
+      Unwrap(device), unwrappedInfo, pSparseMemoryRequirementCount, pSparseMemoryRequirements);
+}
+
 void WrappedVulkan::vkGetBufferMemoryRequirements2(VkDevice device,
                                                    const VkBufferMemoryRequirementsInfo2 *pInfo,
                                                    VkMemoryRequirements2 *pMemoryRequirements)
@@ -365,7 +595,8 @@ void WrappedVulkan::vkGetRenderAreaGranularity(VkDevice device, VkRenderPass ren
 VkResult WrappedVulkan::vkGetPipelineCacheData(VkDevice device, VkPipelineCache pipelineCache,
                                                size_t *pDataSize, void *pData)
 {
-  size_t totalSize = 16 + VK_UUID_SIZE + 4;    // required header (16+UUID) and 4 0 bytes
+  // required header and 4 NULL bytes
+  size_t totalSize = sizeof(VkPipelineCacheHeaderVersionOne) + 4;
 
   if(pDataSize && !pData)
     *pDataSize = totalSize;
@@ -378,24 +609,27 @@ VkResult WrappedVulkan::vkGetPipelineCacheData(VkDevice device, VkPipelineCache 
       return VK_INCOMPLETE;
     }
 
-    uint32_t *ptr = (uint32_t *)pData;
+    VkPipelineCacheHeaderVersionOne *header = (VkPipelineCacheHeaderVersionOne *)pData;
 
-    ptr[0] = 16 + VK_UUID_SIZE;
-    ptr[1] = VK_PIPELINE_CACHE_HEADER_VERSION_ONE;
+    RDCCOMPILE_ASSERT(sizeof(VkPipelineCacheHeaderVersionOne) == 16 + VK_UUID_SIZE,
+                      "Pipeline cache header size is wrong");
+
+    header->headerSize = sizeof(VkPipelineCacheHeaderVersionOne);
+    header->headerVersion = VK_PIPELINE_CACHE_HEADER_VERSION_ONE;
     // just in case the user expects a valid vendorID/deviceID, write the real one
     // MULTIDEVICE need to get the right physical device for this device
-    ptr[2] = m_PhysicalDeviceData.props.vendorID;
-    ptr[3] = m_PhysicalDeviceData.props.deviceID;
+    header->vendorID = m_PhysicalDeviceData.props.vendorID;
+    header->deviceID = m_PhysicalDeviceData.props.deviceID;
 
     MakeFakeUUID();
 
-    memcpy(ptr + 4, fakeRenderDocUUID, VK_UUID_SIZE);
-    // [4], [5], [6], [7]
+    memcpy(header->pipelineCacheUUID, fakeRenderDocUUID, VK_UUID_SIZE);
 
     RDCCOMPILE_ASSERT(VK_UUID_SIZE == 16, "VK_UUID_SIZE has changed");
 
     // empty bytes
-    ptr[8] = 0;
+    uint32_t *ptr = (uint32_t *)(header + 1);
+    *ptr = 0;
   }
 
   // we don't want the application to use pipeline caches at all, and especially

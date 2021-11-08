@@ -198,6 +198,7 @@ SOURCES += Code/qrenderdoc.cpp \
     Widgets/Extended/RDToolButton.cpp \
     Widgets/Extended/RDDoubleSpinBox.cpp \
     Widgets/Extended/RDListView.cpp \
+    Widgets/ComputeDebugSelector.cpp \
     Widgets/CustomPaintWidget.cpp \
     Widgets/ResourcePreview.cpp \
     Widgets/ThumbnailStrip.cpp \
@@ -246,7 +247,8 @@ SOURCES += Code/qrenderdoc.cpp \
     Windows/PerformanceCounterViewer.cpp \
     Windows/ResourceInspector.cpp \
     Windows/Dialogs/AnalyticsConfirmDialog.cpp \
-    Windows/Dialogs/AnalyticsPromptDialog.cpp
+    Windows/Dialogs/AnalyticsPromptDialog.cpp \
+    Windows/Dialogs/AxisMappingDialog.cpp
 HEADERS += Code/CaptureContext.h \
     Code/qprocessinfo.h \
     Code/ReplayManager.h \
@@ -282,6 +284,7 @@ HEADERS += Code/CaptureContext.h \
     Widgets/Extended/RDToolButton.h \
     Widgets/Extended/RDDoubleSpinBox.h \
     Widgets/Extended/RDListView.h \
+    Widgets/ComputeDebugSelector.h \
     Widgets/CustomPaintWidget.h \
     Widgets/ResourcePreview.h \
     Widgets/ThumbnailStrip.h \
@@ -330,7 +333,8 @@ HEADERS += Code/CaptureContext.h \
     Windows/PerformanceCounterViewer.h \
     Windows/ResourceInspector.h \
     Windows/Dialogs/AnalyticsConfirmDialog.h \
-    Windows/Dialogs/AnalyticsPromptDialog.h
+    Windows/Dialogs/AnalyticsPromptDialog.h \
+    Windows/Dialogs/AxisMappingDialog.h
 FORMS    += Windows/Dialogs/AboutDialog.ui \
     Windows/Dialogs/CrashDialog.ui \
     Windows/Dialogs/UpdateDialog.ui \
@@ -351,6 +355,7 @@ FORMS    += Windows/Dialogs/AboutDialog.ui \
     Windows/PipelineState/GLPipelineStateViewer.ui \
     Windows/ConstantBufferPreviewer.ui \
     Widgets/BufferFormatSpecifier.ui \
+    Widgets/ComputeDebugSelector.ui \
     Windows/BufferViewer.ui \
     Windows/ShaderViewer.ui \
     Windows/ShaderMessageViewer.ui \
@@ -373,7 +378,8 @@ FORMS    += Windows/Dialogs/AboutDialog.ui \
     Windows/PerformanceCounterViewer.ui \
     Windows/ResourceInspector.ui \
     Windows/Dialogs/AnalyticsConfirmDialog.ui \
-    Windows/Dialogs/AnalyticsPromptDialog.ui
+    Windows/Dialogs/AnalyticsPromptDialog.ui \
+    Windows/Dialogs/AxisMappingDialog.ui
 
 RESOURCES += Resources/resources.qrc
 

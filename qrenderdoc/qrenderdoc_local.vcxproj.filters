@@ -141,6 +141,9 @@
     <ClCompile Include="Windows\Dialogs\AboutDialog.cpp">
       <Filter>Windows\Dialogs</Filter>
     </ClCompile>
+    <ClCompile Include="Windows\Dialogs\AxisMappingDialog.cpp">
+      <Filter>Windows\Dialogs</Filter>
+    </ClCompile>
     <ClCompile Include="Windows\Dialogs\TextureSaveDialog.cpp">
       <Filter>Windows\Dialogs</Filter>
     </ClCompile>
@@ -399,6 +402,9 @@
     <ClCompile Include="$(IntDir)generated\moc_APIInspector.cpp">
       <Filter>Generated Files</Filter>
     </ClCompile>
+    <ClCompile Include="$(IntDir)generated\moc_AxisMappingDialog.cpp">
+      <Filter>Generated Files</Filter>
+    </ClCompile>
     <ClCompile Include="$(IntDir)generated\moc_BufferFormatSpecifier.cpp">
       <Filter>Generated Files</Filter>
     </ClCompile>
@@ -408,6 +414,9 @@
     <ClCompile Include="$(IntDir)generated\moc_CaptureDialog.cpp">
       <Filter>Generated Files</Filter>
     </ClCompile>
+   <ClCompile Include="$(IntDir)generated\moc_ComputeDebugSelector.cpp">
+    <Filter>Generated Files</Filter>
+   </ClCompile>
     <ClCompile Include="$(IntDir)generated\moc_ConstantBufferPreviewer.cpp">
       <Filter>Generated Files</Filter>
     </ClCompile>
@@ -756,6 +765,9 @@
     <ClCompile Include="Widgets\MarkerBreadcrumbs.cpp">
       <Filter>Widgets</Filter>
     </ClCompile>
+    <ClCompile Include="Widgets\ComputeDebugSelector.cpp">
+      <Filter>Widgets</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="3rdparty\flowlayout\FlowLayout.h">
@@ -956,6 +968,9 @@
     <ClInclude Include="$(IntDir)generated\ui_APIInspector.h">
       <Filter>Generated Files</Filter>
     </ClInclude>
+    <ClInclude Include="$(IntDir)generated\ui_AxisMappingDialog.h">
+      <Filter>Generated Files</Filter>
+    </ClInclude>
     <ClInclude Include="$(IntDir)generated\ui_BufferFormatSpecifier.h">
       <Filter>Generated Files</Filter>
     </ClInclude>
@@ -965,6 +980,9 @@
     <ClInclude Include="$(IntDir)generated\ui_CaptureDialog.h">
       <Filter>Generated Files</Filter>
     </ClInclude>
+   <ClInclude Include="$(IntDir)generated\ui_ComputeDebugSelector.h">
+    <Filter>Generated Files</Filter>
+   </ClInclude>
     <ClInclude Include="$(IntDir)generated\ui_ConstantBufferPreviewer.h">
       <Filter>Generated Files</Filter>
     </ClInclude>
@@ -1220,6 +1238,9 @@
     <CustomBuild Include="Windows\Dialogs\AboutDialog.ui">
       <Filter>Windows\Dialogs</Filter>
     </CustomBuild>
+    <CustomBuild Include="Windows\Dialogs\AxisMappingDialog.ui">
+      <Filter>Windows\Dialogs</Filter>
+    </CustomBuild>
     <CustomBuild Include="Windows\Dialogs\CaptureDialog.ui">
       <Filter>Windows\Dialogs</Filter>
     </CustomBuild>
@@ -1311,6 +1332,9 @@
       <Filter>Widgets</Filter>
     </CustomBuild>
     <CustomBuild Include="Windows\Dialogs\AboutDialog.h">
+      <Filter>Windows\Dialogs</Filter>
+    </CustomBuild>
+    <CustomBuild Include="Windows\Dialogs\AxisMappingDialog.h">
       <Filter>Windows\Dialogs</Filter>
     </CustomBuild>
     <CustomBuild Include="Windows\Dialogs\CaptureDialog.h">
@@ -1533,6 +1557,12 @@
       <Filter>Windows</Filter>
     </CustomBuild>
     <CustomBuild Include="Widgets\MarkerBreadcrumbs.h">
+      <Filter>Widgets</Filter>
+    </CustomBuild>
+    <CustomBuild Include="Widgets\ComputeDebugSelector.h">
+      <Filter>Widgets</Filter>
+    </CustomBuild>
+    <CustomBuild Include="Widgets\ComputeDebugSelector.ui">
       <Filter>Widgets</Filter>
     </CustomBuild>
   </ItemGroup>

@@ -246,7 +246,8 @@ void D3D11Replay::FillTimers(D3D11CounterContext &ctx, const ActionDescription &
     const ActionDescription &a = actionnode.children[i];
     FillTimers(ctx, actionnode.children[i]);
 
-    if(a.events.empty())
+    if(a.events.empty() ||
+       (a.flags & (ActionFlags::PushMarker | ActionFlags::SetMarker | ActionFlags::PopMarker)))
       continue;
 
     GPUTimer *timer = NULL;
@@ -290,8 +291,9 @@ void D3D11Replay::FillTimers(D3D11CounterContext &ctx, const ActionDescription &
     if(timer->occlusion)
       m_pImmediateContext->GetReal()->End(timer->occlusion);
     if(timer->stats)
+      m_pImmediateContext->GetReal()->End(timer->stats);
 
-      ctx.eventStart = a.eventId + 1;
+    ctx.eventStart = a.eventId + 1;
   }
 }
 

@@ -30,6 +30,7 @@
 #include <QScrollBar>
 #include <QXmlStreamWriter>
 #include "Code/Resources.h"
+#include "Widgets/ComputeDebugSelector.h"
 #include "Widgets/Extended/RDHeaderView.h"
 #include "flowlayout/FlowLayout.h"
 #include "toolwindowmanager/ToolWindowManager.h"
@@ -123,6 +124,8 @@ VulkanPipelineStateViewer::VulkanPipelineStateViewer(ICaptureContext &ctx,
 {
   ui->setupUi(this);
 
+  m_ComputeDebugSelector = new ComputeDebugSelector(this);
+
   const QIcon &action = Icons::action();
   const QIcon &action_hover = Icons::action_hover();
 
@@ -190,6 +193,9 @@ VulkanPipelineStateViewer::VulkanPipelineStateViewer(ICaptureContext &ctx,
     b->setForegroundRole(QPalette::ToolTipText);
     b->setMinimumSizeHint(QSize(250, 0));
   }
+
+  QObject::connect(m_ComputeDebugSelector, &ComputeDebugSelector::beginDebug, this,
+                   &VulkanPipelineStateViewer::computeDebugSelector_beginDebug);
 
   for(QToolButton *b : editButtons)
     QObject::connect(b, &QToolButton::clicked, &m_Common, &PipelineStateViewer::shaderEdit_clicked);
@@ -484,6 +490,7 @@ VulkanPipelineStateViewer::~VulkanPipelineStateViewer()
 {
   m_CombinedImageSamplers.clear();
   delete ui;
+  delete m_ComputeDebugSelector;
 }
 
 void VulkanPipelineStateViewer::OnCaptureLoaded()
@@ -903,17 +910,7 @@ void VulkanPipelineStateViewer::clearState()
 
   ui->stencils->clear();
 
-  {
-    ui->groupX->setEnabled(false);
-    ui->groupY->setEnabled(false);
-    ui->groupZ->setEnabled(false);
-
-    ui->threadX->setEnabled(false);
-    ui->threadY->setEnabled(false);
-    ui->threadZ->setEnabled(false);
-
-    ui->debugThread->setEnabled(false);
-  }
+  ui->computeDebugSelector->setEnabled(false);
 
   ui->conditionalRenderingGroup->setVisible(false);
   ui->csConditionalRenderingGroup->setVisible(false);
@@ -2409,7 +2406,7 @@ void VulkanPipelineStateViewer::setState()
   ui->scissors->beginUpdate();
   ui->scissors->clear();
 
-  if(state.currentPass.renderpass.resourceId != ResourceId())
+  if(state.currentPass.renderpass.resourceId != ResourceId() || state.currentPass.renderpass.dynamic)
   {
     ui->scissors->addTopLevelItem(new RDTreeWidgetItem(
         {tr("Render Area"), state.currentPass.renderArea.x, state.currentPass.renderArea.y,
@@ -2449,9 +2446,24 @@ void VulkanPipelineStateViewer::setState()
   ui->cullMode->setText(ToQStr(state.rasterizer.cullMode));
   ui->frontCCW->setPixmap(state.rasterizer.frontCCW ? tick : cross);
 
-  ui->depthBias->setText(Formatter::Format(state.rasterizer.depthBias));
-  ui->depthBiasClamp->setText(Formatter::Format(state.rasterizer.depthBiasClamp));
-  ui->slopeScaledBias->setText(Formatter::Format(state.rasterizer.slopeScaledDepthBias));
+  if(state.rasterizer.depthBiasEnable)
+  {
+    ui->depthBias->setText(Formatter::Format(state.rasterizer.depthBias));
+    ui->depthBiasClamp->setText(Formatter::Format(state.rasterizer.depthBiasClamp));
+    ui->slopeScaledBias->setText(Formatter::Format(state.rasterizer.slopeScaledDepthBias));
+    ui->depthBias->setPixmap(QPixmap());
+    ui->depthBiasClamp->setPixmap(QPixmap());
+    ui->slopeScaledBias->setPixmap(QPixmap());
+  }
+  else
+  {
+    ui->depthBias->setText(QString());
+    ui->depthBiasClamp->setText(QString());
+    ui->slopeScaledBias->setText(QString());
+    ui->depthBias->setPixmap(cross);
+    ui->depthBiasClamp->setPixmap(cross);
+    ui->slopeScaledBias->setPixmap(cross);
+  }
 
   ui->depthClamp->setPixmap(state.rasterizer.depthClampEnable ? tick : cross);
   ui->depthClip->setPixmap(state.rasterizer.depthClipEnable ? tick : cross);
@@ -2530,11 +2542,23 @@ void VulkanPipelineStateViewer::setState()
 
   bool targets[32] = {};
 
-  ui->renderpass->setText(QFormatStr("Render Pass: %1 (Subpass %2)")
-                              .arg(ToQStr(state.currentPass.renderpass.resourceId))
-                              .arg(state.currentPass.renderpass.subpass));
-  ui->framebuffer->setText(
-      QFormatStr("Framebuffer: %1").arg(ToQStr(state.currentPass.framebuffer.resourceId)));
+  if(state.currentPass.renderpass.dynamic)
+  {
+    QString dynamic = tr("Dynamic", "Dynamic rendering renderpass name");
+    QString text = QFormatStr("Render Pass: %1").arg(dynamic);
+    if(state.currentPass.renderpass.suspended)
+      text += tr(" (Suspended)", "Dynamic rendering renderpass name");
+    ui->renderpass->setText(text);
+    ui->framebuffer->setText(tr("Framebuffer: %1").arg(dynamic));
+  }
+  else
+  {
+    ui->renderpass->setText(QFormatStr("Render Pass: %1 (Subpass %2)")
+                                .arg(ToQStr(state.currentPass.renderpass.resourceId))
+                                .arg(state.currentPass.renderpass.subpass));
+    ui->framebuffer->setText(
+        QFormatStr("Framebuffer: %1").arg(ToQStr(state.currentPass.framebuffer.resourceId)));
+  }
 
   vs = ui->fbAttach->verticalScrollBar()->value();
   ui->fbAttach->beginUpdate();
@@ -2609,9 +2633,9 @@ void VulkanPipelineStateViewer::setState()
         QString slotname;
 
         if(colIdx >= 0)
-          slotname = QFormatStr("Color %1").arg(i);
+          slotname = QFormatStr("Color %1").arg(colIdx);
         else if(resIdx >= 0)
-          slotname = QFormatStr("Resolve %1").arg(i);
+          slotname = QFormatStr("Resolve %1").arg(resIdx);
         else if(state.currentPass.renderpass.fragmentDensityAttachment == i)
           slotname = lit("Fragment Density Map");
         else
@@ -2791,61 +2815,54 @@ void VulkanPipelineStateViewer::setState()
   ui->stencils->endUpdate();
 
   // set up thread debugging inputs
-  if(m_Ctx.APIProps().shaderDebugging && state.computeShader.reflection &&
-     state.computeShader.reflection->debugInfo.debuggable && action &&
-     (action->flags & ActionFlags::Dispatch))
+  bool enableDebug = m_Ctx.APIProps().shaderDebugging && state.computeShader.reflection &&
+                     state.computeShader.reflection->debugInfo.debuggable && action &&
+                     (action->flags & ActionFlags::Dispatch);
+  if(enableDebug)
   {
-    ui->groupX->setEnabled(true);
-    ui->groupY->setEnabled(true);
-    ui->groupZ->setEnabled(true);
+    // Validate dispatch/threadgroup dimensions
+    enableDebug &= action->dispatchDimension[0] > 0;
+    enableDebug &= action->dispatchDimension[1] > 0;
+    enableDebug &= action->dispatchDimension[2] > 0;
 
-    ui->threadX->setEnabled(true);
-    ui->threadY->setEnabled(true);
-    ui->threadZ->setEnabled(true);
+    const rdcfixedarray<uint32_t, 3> &threadDims =
+        (action->dispatchThreadsDimension[0] == 0)
+            ? state.computeShader.reflection->dispatchThreadsDimension
+            : action->dispatchThreadsDimension;
+    enableDebug &= threadDims[0] > 0;
+    enableDebug &= threadDims[1] > 0;
+    enableDebug &= threadDims[2] > 0;
+  }
 
-    ui->debugThread->setEnabled(true);
+  if(enableDebug)
+  {
+    ui->computeDebugSelector->setEnabled(true);
 
     // set maximums for CS debugging
-    ui->groupX->setMaximum((int)action->dispatchDimension[0] - 1);
-    ui->groupY->setMaximum((int)action->dispatchDimension[1] - 1);
-    ui->groupZ->setMaximum((int)action->dispatchDimension[2] - 1);
+    m_ComputeDebugSelector->SetThreadBounds(
+        action->dispatchDimension, (action->dispatchThreadsDimension[0] == 0)
+                                       ? state.computeShader.reflection->dispatchThreadsDimension
+                                       : action->dispatchThreadsDimension);
 
-    if(action->dispatchThreadsDimension[0] == 0)
-    {
-      ui->threadX->setMaximum((int)state.computeShader.reflection->dispatchThreadsDimension[0] - 1);
-      ui->threadY->setMaximum((int)state.computeShader.reflection->dispatchThreadsDimension[1] - 1);
-      ui->threadZ->setMaximum((int)state.computeShader.reflection->dispatchThreadsDimension[2] - 1);
-    }
-    else
-    {
-      ui->threadX->setMaximum((int)action->dispatchThreadsDimension[0] - 1);
-      ui->threadY->setMaximum((int)action->dispatchThreadsDimension[1] - 1);
-      ui->threadZ->setMaximum((int)action->dispatchThreadsDimension[2] - 1);
-    }
-
-    ui->debugThread->setToolTip(QString());
+    ui->computeDebugSelector->setToolTip(
+        tr("Debug this compute shader by specifying group/thread ID or dispatch ID"));
   }
   else
   {
-    ui->groupX->setEnabled(false);
-    ui->groupY->setEnabled(false);
-    ui->groupZ->setEnabled(false);
-
-    ui->threadX->setEnabled(false);
-    ui->threadY->setEnabled(false);
-    ui->threadZ->setEnabled(false);
-
-    ui->debugThread->setEnabled(false);
+    ui->computeDebugSelector->setEnabled(false);
 
     if(!m_Ctx.APIProps().shaderDebugging)
-      ui->debugThread->setToolTip(tr("This API does not support shader debugging"));
+      ui->computeDebugSelector->setToolTip(tr("This API does not support shader debugging"));
     else if(!action || !(action->flags & ActionFlags::Dispatch))
-      ui->debugThread->setToolTip(tr("No dispatch selected"));
+      ui->computeDebugSelector->setToolTip(tr("No dispatch selected"));
     else if(!state.computeShader.reflection)
-      ui->debugThread->setToolTip(tr("No compute shader bound"));
+      ui->computeDebugSelector->setToolTip(tr("No compute shader bound"));
     else if(!state.computeShader.reflection->debugInfo.debuggable)
-      ui->debugThread->setToolTip(tr("This shader doesn't support debugging: %1")
-                                      .arg(state.computeShader.reflection->debugInfo.debugStatus));
+      ui->computeDebugSelector->setToolTip(
+          tr("This shader doesn't support debugging: %1")
+              .arg(state.computeShader.reflection->debugInfo.debugStatus));
+    else
+      ui->computeDebugSelector->setToolTip(tr("Invalid dispatch/threadgroup dimensions."));
   }
 
   // highlight the appropriate stages in the flowchart
@@ -3743,9 +3760,13 @@ void VulkanPipelineStateViewer::exportHTML(QXmlStreamWriter &xml, const VKPipe::
     xml.writeEndElement();
 
     m_Common.exportHTMLTable(
-        xml, {tr("Depth Bias"), tr("Depth Bias Clamp"), tr("Slope Scaled Bias"), tr("Line Width")},
-        {Formatter::Format(rs.depthBias), Formatter::Format(rs.depthBiasClamp),
-         Formatter::Format(rs.slopeScaledDepthBias), Formatter::Format(rs.lineWidth)});
+        xml, {tr("Depth Bias Enable"), tr("Depth Bias"), tr("Depth Bias Clamp"),
+              tr("Slope Scaled Bias"), tr("Line Width")},
+        {
+            rs.depthBiasEnable ? tr("Yes") : tr("No"), Formatter::Format(rs.depthBias),
+            Formatter::Format(rs.depthBiasClamp), Formatter::Format(rs.slopeScaledDepthBias),
+            Formatter::Format(rs.lineWidth),
+        });
   }
 
   const VKPipe::MultiSample &msaa = m_Ctx.CurVulkanPipelineState()->multisample;
@@ -4721,8 +4742,9 @@ void VulkanPipelineStateViewer::on_meshView_clicked()
   ToolWindowManager::raiseToolWindow(m_Ctx.GetMeshPreview()->Widget());
 }
 
-void VulkanPipelineStateViewer::on_debugThread_clicked()
+void VulkanPipelineStateViewer::on_computeDebugSelector_clicked()
 {
+  // Check whether debugging is valid for this event before showing the dialog
   if(!m_Ctx.APIProps().shaderDebugging)
     return;
 
@@ -4731,47 +4753,50 @@ void VulkanPipelineStateViewer::on_debugThread_clicked()
 
   const ActionDescription *action = m_Ctx.CurAction();
 
-  if(!action || !(action->flags & ActionFlags::Dispatch))
+  if(!action)
     return;
 
-  ShaderReflection *shaderDetails = m_Ctx.CurVulkanPipelineState()->computeShader.reflection;
+  ShaderReflection *shaderDetails = m_Ctx.CurD3D12PipelineState()->computeShader.reflection;
   const ShaderBindpointMapping &bindMapping =
-      m_Ctx.CurVulkanPipelineState()->computeShader.bindpointMapping;
+      m_Ctx.CurD3D12PipelineState()->computeShader.bindpointMapping;
 
   if(!shaderDetails)
     return;
 
-  uint32_t groupdim[3] = {};
+  RDDialog::show(m_ComputeDebugSelector);
+}
 
-  for(int i = 0; i < 3; i++)
-    groupdim[i] = action->dispatchDimension[i];
+void VulkanPipelineStateViewer::computeDebugSelector_beginDebug(
+    const rdcfixedarray<uint32_t, 3> &group, const rdcfixedarray<uint32_t, 3> &thread)
+{
+  const ActionDescription *action = m_Ctx.CurAction();
 
-  uint32_t threadsdim[3] = {};
-  for(int i = 0; i < 3; i++)
-    threadsdim[i] = action->dispatchThreadsDimension[i];
+  if(!action)
+    return;
 
-  if(threadsdim[0] == 0)
-  {
-    for(int i = 0; i < 3; i++)
-      threadsdim[i] = shaderDetails->dispatchThreadsDimension[i];
-  }
+  ShaderReflection *shaderDetails = m_Ctx.CurD3D12PipelineState()->computeShader.reflection;
+  const ShaderBindpointMapping &bindMapping =
+      m_Ctx.CurD3D12PipelineState()->computeShader.bindpointMapping;
+
+  if(!shaderDetails)
+    return;
 
   struct threadSelect
   {
     rdcfixedarray<uint32_t, 3> g;
     rdcfixedarray<uint32_t, 3> t;
-  } thread = {
+  } debugThread = {
       // g[]
-      {(uint32_t)ui->groupX->value(), (uint32_t)ui->groupY->value(), (uint32_t)ui->groupZ->value()},
+      {group[0], group[1], group[2]},
       // t[]
-      {(uint32_t)ui->threadX->value(), (uint32_t)ui->threadY->value(), (uint32_t)ui->threadZ->value()},
+      {thread[0], thread[1], thread[2]},
   };
 
   bool done = false;
   ShaderDebugTrace *trace = NULL;
 
-  m_Ctx.Replay().AsyncInvoke([&trace, &done, thread](IReplayController *r) {
-    trace = r->DebugThread(thread.g, thread.t);
+  m_Ctx.Replay().AsyncInvoke([&trace, &done, debugThread](IReplayController *r) {
+    trace = r->DebugThread(debugThread.g, debugThread.t);
 
     if(trace->debugger == NULL)
     {
@@ -4783,12 +4808,12 @@ void VulkanPipelineStateViewer::on_debugThread_clicked()
   });
 
   QString debugContext = lit("Group [%1,%2,%3] Thread [%4,%5,%6]")
-                             .arg(thread.g[0])
-                             .arg(thread.g[1])
-                             .arg(thread.g[2])
-                             .arg(thread.t[0])
-                             .arg(thread.t[1])
-                             .arg(thread.t[2]);
+                             .arg(group[0])
+                             .arg(group[1])
+                             .arg(group[2])
+                             .arg(thread[0])
+                             .arg(thread[1])
+                             .arg(thread[2]);
 
   // wait a short while before displaying the progress dialog (which won't show if we're already
   // done by the time we reach it)

@@ -62,6 +62,13 @@ VkDynamicState ConvertDynamicState(VulkanDynamicStateIndex idx)
     case VkDynamicDepthBoundsTestEnableEXT: return VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE_EXT;
     case VkDynamicStencilTestEnableEXT: return VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE_EXT;
     case VkDynamicStencilOpEXT: return VK_DYNAMIC_STATE_STENCIL_OP_EXT;
+    case VkDynamicVertexInputEXT: return VK_DYNAMIC_STATE_VERTEX_INPUT_EXT;
+    case VkDynamicControlPointsEXT: return VK_DYNAMIC_STATE_PATCH_CONTROL_POINTS_EXT;
+    case VkDynamicRastDiscardEXT: return VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE_EXT;
+    case VkDynamicDepthBiasEnableEXT: return VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE_EXT;
+    case VkDynamicLogicOpEXT: return VK_DYNAMIC_STATE_LOGIC_OP_EXT;
+    case VkDynamicPrimRestartEXT: return VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE_EXT;
+    case VkDynamicColorWriteEXT: return VK_DYNAMIC_STATE_COLOR_WRITE_ENABLE_EXT;
     case VkDynamicCount: break;
   }
 
@@ -108,6 +115,13 @@ VulkanDynamicStateIndex ConvertDynamicState(VkDynamicState state)
     case VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE_EXT: return VkDynamicDepthBoundsTestEnableEXT;
     case VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE_EXT: return VkDynamicStencilTestEnableEXT;
     case VK_DYNAMIC_STATE_STENCIL_OP_EXT: return VkDynamicStencilOpEXT;
+    case VK_DYNAMIC_STATE_VERTEX_INPUT_EXT: return VkDynamicVertexInputEXT;
+    case VK_DYNAMIC_STATE_PATCH_CONTROL_POINTS_EXT: return VkDynamicControlPointsEXT;
+    case VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE_EXT: return VkDynamicRastDiscardEXT;
+    case VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE_EXT: return VkDynamicDepthBiasEnableEXT;
+    case VK_DYNAMIC_STATE_LOGIC_OP_EXT: return VkDynamicLogicOpEXT;
+    case VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE_EXT: return VkDynamicPrimRestartEXT;
+    case VK_DYNAMIC_STATE_COLOR_WRITE_ENABLE_EXT: return VkDynamicColorWriteEXT;
     case VK_DYNAMIC_STATE_MAX_ENUM: break;
   }
 
@@ -345,6 +359,25 @@ void VulkanCreationInfo::Pipeline::Init(VulkanResourceManager *resourceMan,
   layout = GetResID(pCreateInfo->layout);
   renderpass = GetResID(pCreateInfo->renderPass);
   subpass = pCreateInfo->subpass;
+
+  const VkPipelineRenderingCreateInfoKHR *dynRenderCreate =
+      (const VkPipelineRenderingCreateInfoKHR *)FindNextStruct(
+          pCreateInfo, VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR);
+  if(dynRenderCreate)
+  {
+    viewMask = dynRenderCreate->viewMask;
+    colorFormats.assign(dynRenderCreate->pColorAttachmentFormats,
+                        dynRenderCreate->colorAttachmentCount);
+    depthFormat = dynRenderCreate->depthAttachmentFormat;
+    stencilFormat = dynRenderCreate->stencilAttachmentFormat;
+  }
+  else
+  {
+    viewMask = 0;
+    colorFormats.clear();
+    depthFormat = VK_FORMAT_UNDEFINED;
+    stencilFormat = VK_FORMAT_UNDEFINED;
+  }
 
   RDCEraseEl(dynamicStates);
   if(pCreateInfo->pDynamicState)
@@ -684,6 +717,22 @@ void VulkanCreationInfo::Pipeline::Init(VulkanResourceManager *resourceMan,
     RDCEraseEl(blendConst);
 
     attachments.clear();
+  }
+
+  // this struct probably will never get used, since the user could just set the colorWriteMask
+  // above to 0. It's really only useful for specifying how the dynamic state works. However just
+  // for completeness...
+  const VkPipelineColorWriteCreateInfoEXT *colorWriteEnable =
+      (const VkPipelineColorWriteCreateInfoEXT *)FindNextStruct(
+          pCreateInfo->pRasterizationState, VK_STRUCTURE_TYPE_PIPELINE_COLOR_WRITE_CREATE_INFO_EXT);
+  if(colorWriteEnable)
+  {
+    RDCASSERTEQUAL(attachments.size(), colorWriteEnable->attachmentCount);
+    for(size_t i = 0; i < attachments.size() && i < colorWriteEnable->attachmentCount; i++)
+    {
+      if(!colorWriteEnable->pColorWriteEnables[i])
+        attachments[i].channelWriteMask = 0;
+    }
   }
 }
 

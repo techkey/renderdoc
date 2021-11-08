@@ -1171,8 +1171,9 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
     ret.inputAssembly.indexBuffer.resourceId = rm->GetOriginalID(state.ibuffer.buf);
     ret.inputAssembly.indexBuffer.byteOffset = state.ibuffer.offs;
     ret.inputAssembly.indexBuffer.byteStride = state.ibuffer.bytewidth;
-    ret.inputAssembly.primitiveRestartEnable = p.primitiveRestartEnable;
-    ret.inputAssembly.topology = MakePrimitiveTopology(state.primitiveTopology, p.patchControlPoints);
+    ret.inputAssembly.primitiveRestartEnable = state.primRestartEnable != VK_FALSE;
+    ret.inputAssembly.topology =
+        MakePrimitiveTopology(state.primitiveTopology, state.patchControlPoints);
 
     // Vertex Input
     ret.vertexInput.attributes.resize(p.vertexAttrs.size());
@@ -1338,7 +1339,7 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
     // Rasterizer
     ret.rasterizer.depthClampEnable = p.depthClampEnable;
     ret.rasterizer.depthClipEnable = p.depthClipEnable;
-    ret.rasterizer.rasterizerDiscardEnable = p.rasterizerDiscardEnable;
+    ret.rasterizer.rasterizerDiscardEnable = state.rastDiscardEnable != VK_FALSE;
     ret.rasterizer.frontCCW = state.frontFace == VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
     ret.rasterizer.conservativeRasterization = ConservativeRaster::Disabled;
@@ -1402,6 +1403,7 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
         break;
     }
 
+    ret.rasterizer.depthBiasEnable = state.depthBiasEnable != VK_FALSE;
     ret.rasterizer.depthBias = state.bias.depth;
     ret.rasterizer.depthBiasClamp = state.bias.biasclamp;
     ret.rasterizer.slopeScaledDepthBias = state.bias.slope;
@@ -1437,7 +1439,7 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
       // due to shared structs, this is slightly duplicated - Vulkan doesn't have separate states
       // for logic operations
       ret.colorBlend.blends[i].logicOperationEnabled = p.logicOpEnable;
-      ret.colorBlend.blends[i].logicOperation = MakeLogicOp(p.logicOp);
+      ret.colorBlend.blends[i].logicOperation = MakeLogicOp(state.logicOp);
 
       ret.colorBlend.blends[i].colorBlend.source = MakeBlendMultiplier(p.attachments[i].blend.Source);
       ret.colorBlend.blends[i].colorBlend.destination =
@@ -1452,6 +1454,9 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
           MakeBlendOp(p.attachments[i].alphaBlend.Operation);
 
       ret.colorBlend.blends[i].writeMask = p.attachments[i].channelWriteMask;
+
+      if(i < state.colorWriteEnable.size() && !state.colorWriteEnable[i])
+        ret.colorBlend.blends[i].writeMask = 0;
     }
 
     ret.colorBlend.blendFactor = state.blendConst;
@@ -1509,27 +1514,164 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
     ret.colorBlend.blends.clear();
   }
 
-  if(state.renderPass != ResourceId())
+  if(state.dynamicRendering.active)
+  {
+    VKPipe::RenderPass &rpState = ret.currentPass.renderpass;
+    VKPipe::Framebuffer &fbState = ret.currentPass.framebuffer;
+    const VulkanRenderState::DynamicRendering &dyn = state.dynamicRendering;
+
+    rpState.dynamic = true;
+    rpState.suspended = dyn.suspended;
+    rpState.resourceId = ResourceId();
+    rpState.subpass = 0;
+
+    fbState.resourceId = ResourceId();
+    // dynamic rendering does not provide a framebuffer dimension, it's implicit from the image
+    // views
+    fbState.width = 0;
+    fbState.height = 0;
+    fbState.layers = dyn.layerCount;
+
+    fbState.attachments.clear();
+    rpState.inputAttachments.clear();
+    rpState.colorAttachments.clear();
+    rpState.resolveAttachments.clear();
+
+    size_t attIdx = 0;
+    for(size_t i = 0; i < dyn.color.size(); i++)
+    {
+      fbState.attachments.push_back({});
+
+      ResourceId viewid = GetResID(dyn.color[i].imageView);
+
+      if(viewid != ResourceId())
+      {
+        fbState.attachments.back().viewResourceId = rm->GetOriginalID(viewid);
+        ret.currentPass.framebuffer.attachments[attIdx].imageResourceId =
+            rm->GetOriginalID(c.m_ImageView[viewid].image);
+
+        fbState.attachments.back().viewFormat = MakeResourceFormat(c.m_ImageView[viewid].format);
+        fbState.attachments.back().firstMip = c.m_ImageView[viewid].range.baseMipLevel;
+        fbState.attachments.back().firstSlice = c.m_ImageView[viewid].range.baseArrayLayer;
+        fbState.attachments.back().numMips = c.m_ImageView[viewid].range.levelCount;
+        fbState.attachments.back().numSlices = c.m_ImageView[viewid].range.layerCount;
+
+        Convert(fbState.attachments.back().swizzle, c.m_ImageView[viewid].componentMapping);
+      }
+      else
+      {
+        fbState.attachments.back().viewResourceId = ResourceId();
+        fbState.attachments.back().imageResourceId = ResourceId();
+
+        fbState.attachments.back().firstMip = 0;
+        fbState.attachments.back().firstSlice = 0;
+        fbState.attachments.back().numMips = 1;
+        fbState.attachments.back().numSlices = 1;
+      }
+
+      rpState.colorAttachments.push_back(uint32_t(attIdx++));
+
+      if(dyn.color[i].resolveMode && dyn.color[i].resolveImageView != VK_NULL_HANDLE)
+      {
+        fbState.attachments.push_back({});
+
+        viewid = GetResID(dyn.color[i].resolveImageView);
+
+        fbState.attachments.back().viewResourceId = rm->GetOriginalID(viewid);
+        ret.currentPass.framebuffer.attachments[attIdx].imageResourceId =
+            rm->GetOriginalID(c.m_ImageView[viewid].image);
+
+        fbState.attachments.back().viewFormat = MakeResourceFormat(c.m_ImageView[viewid].format);
+        fbState.attachments.back().firstMip = c.m_ImageView[viewid].range.baseMipLevel;
+        fbState.attachments.back().firstSlice = c.m_ImageView[viewid].range.baseArrayLayer;
+        fbState.attachments.back().numMips = c.m_ImageView[viewid].range.levelCount;
+        fbState.attachments.back().numSlices = c.m_ImageView[viewid].range.layerCount;
+
+        Convert(fbState.attachments.back().swizzle, c.m_ImageView[viewid].componentMapping);
+
+        rpState.resolveAttachments.push_back(uint32_t(attIdx++));
+      }
+    }
+
+    if(dyn.depth.imageView != VK_NULL_HANDLE || dyn.stencil.imageView != VK_NULL_HANDLE)
+    {
+      fbState.attachments.push_back({});
+
+      ResourceId viewid = GetResID(dyn.depth.imageView);
+      if(dyn.depth.imageView == VK_NULL_HANDLE)
+        viewid = GetResID(dyn.stencil.imageView);
+
+      fbState.attachments.back().viewResourceId = rm->GetOriginalID(viewid);
+      ret.currentPass.framebuffer.attachments[attIdx].imageResourceId =
+          rm->GetOriginalID(c.m_ImageView[viewid].image);
+
+      fbState.attachments.back().viewFormat = MakeResourceFormat(c.m_ImageView[viewid].format);
+      fbState.attachments.back().firstMip = c.m_ImageView[viewid].range.baseMipLevel;
+      fbState.attachments.back().firstSlice = c.m_ImageView[viewid].range.baseArrayLayer;
+      fbState.attachments.back().numMips = c.m_ImageView[viewid].range.levelCount;
+      fbState.attachments.back().numSlices = c.m_ImageView[viewid].range.layerCount;
+
+      Convert(fbState.attachments.back().swizzle, c.m_ImageView[viewid].componentMapping);
+
+      rpState.depthstencilAttachment = int32_t(attIdx++);
+    }
+    else
+    {
+      rpState.depthstencilAttachment = -1;
+    }
+
+    if(dyn.fragmentDensityView != VK_NULL_HANDLE)
+    {
+      fbState.attachments.push_back({});
+
+      ResourceId viewid = GetResID(dyn.fragmentDensityView);
+
+      fbState.attachments.back().viewResourceId = rm->GetOriginalID(viewid);
+      ret.currentPass.framebuffer.attachments[attIdx].imageResourceId =
+          rm->GetOriginalID(c.m_ImageView[viewid].image);
+
+      fbState.attachments.back().viewFormat = MakeResourceFormat(c.m_ImageView[viewid].format);
+      fbState.attachments.back().firstMip = c.m_ImageView[viewid].range.baseMipLevel;
+      fbState.attachments.back().firstSlice = c.m_ImageView[viewid].range.baseArrayLayer;
+      fbState.attachments.back().numMips = c.m_ImageView[viewid].range.levelCount;
+      fbState.attachments.back().numSlices = c.m_ImageView[viewid].range.layerCount;
+
+      Convert(fbState.attachments.back().swizzle, c.m_ImageView[viewid].componentMapping);
+
+      rpState.fragmentDensityAttachment = int32_t(attIdx++);
+    }
+    else
+    {
+      rpState.fragmentDensityAttachment = -1;
+    }
+
+    rpState.multiviews.clear();
+    for(uint32_t v = 0; v < 32; v++)
+    {
+      if(dyn.viewMask & (1 << v))
+        rpState.multiviews.push_back(v);
+    }
+  }
+  else if(state.GetRenderPass() != ResourceId())
   {
     // Renderpass
-    ret.currentPass.renderpass.resourceId = rm->GetOriginalID(state.renderPass);
+    ret.currentPass.renderpass.dynamic = false;
+    ret.currentPass.renderpass.resourceId = rm->GetOriginalID(state.GetRenderPass());
     ret.currentPass.renderpass.subpass = state.subpass;
-    if(state.renderPass != ResourceId())
-    {
-      ret.currentPass.renderpass.inputAttachments =
-          c.m_RenderPass[state.renderPass].subpasses[state.subpass].inputAttachments;
-      ret.currentPass.renderpass.colorAttachments =
-          c.m_RenderPass[state.renderPass].subpasses[state.subpass].colorAttachments;
-      ret.currentPass.renderpass.resolveAttachments =
-          c.m_RenderPass[state.renderPass].subpasses[state.subpass].resolveAttachments;
-      ret.currentPass.renderpass.depthstencilAttachment =
-          c.m_RenderPass[state.renderPass].subpasses[state.subpass].depthstencilAttachment;
-      ret.currentPass.renderpass.fragmentDensityAttachment =
-          c.m_RenderPass[state.renderPass].subpasses[state.subpass].fragmentDensityAttachment;
 
-      ret.currentPass.renderpass.multiviews =
-          c.m_RenderPass[state.renderPass].subpasses[state.subpass].multiviews;
-    }
+    ret.currentPass.renderpass.inputAttachments =
+        c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].inputAttachments;
+    ret.currentPass.renderpass.colorAttachments =
+        c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].colorAttachments;
+    ret.currentPass.renderpass.resolveAttachments =
+        c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].resolveAttachments;
+    ret.currentPass.renderpass.depthstencilAttachment =
+        c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].depthstencilAttachment;
+    ret.currentPass.renderpass.fragmentDensityAttachment =
+        c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].fragmentDensityAttachment;
+
+    ret.currentPass.renderpass.multiviews =
+        c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].multiviews;
 
     ResourceId fb = state.GetFramebuffer();
 
@@ -3889,15 +4031,15 @@ void VulkanReplay::FreeCustomShader(ResourceId id)
   m_pDriver->ReleaseResource(GetResourceManager()->GetCurrentResource(id));
 }
 
-ResourceId VulkanReplay::ApplyCustomShader(ResourceId shader, ResourceId texid,
-                                           const Subresource &sub, CompType typeCast)
+ResourceId VulkanReplay::ApplyCustomShader(TextureDisplay &display)
 {
-  if(shader == ResourceId() || texid == ResourceId())
+  if(display.customShaderId == ResourceId() || display.resourceId == ResourceId())
     return ResourceId();
 
-  VulkanCreationInfo::Image &iminfo = m_pDriver->m_CreationInfo.m_Image[texid];
+  VulkanCreationInfo::Image &iminfo = m_pDriver->m_CreationInfo.m_Image[display.resourceId];
 
-  GetDebugManager()->CreateCustomShaderTex(iminfo.extent.width, iminfo.extent.height, sub.mip);
+  GetDebugManager()->CreateCustomShaderTex(iminfo.extent.width, iminfo.extent.height,
+                                           display.subresource.mip);
 
   int oldW = m_DebugWidth, oldH = m_DebugHeight;
 
@@ -3909,12 +4051,12 @@ ResourceId VulkanReplay::ApplyCustomShader(ResourceId shader, ResourceId texid,
   disp.flipY = false;
   disp.xOffset = 0.0f;
   disp.yOffset = 0.0f;
-  disp.customShaderId = shader;
-  disp.resourceId = texid;
-  disp.typeCast = typeCast;
+  disp.customShaderId = display.customShaderId;
+  disp.resourceId = display.resourceId;
+  disp.typeCast = display.typeCast;
   disp.hdrMultiplier = -1.0f;
   disp.linearDisplayAsGamma = false;
-  disp.subresource = sub;
+  disp.subresource = display.subresource;
   disp.overlay = DebugOverlay::NoOverlay;
   disp.rangeMin = 0.0f;
   disp.rangeMax = 1.0f;
@@ -3930,15 +4072,16 @@ ResourceId VulkanReplay::ApplyCustomShader(ResourceId shader, ResourceId texid,
       {{
            0, 0,
        },
-       {RDCMAX(1U, iminfo.extent.width >> sub.mip), RDCMAX(1U, iminfo.extent.height >> sub.mip)}},
+       {RDCMAX(1U, iminfo.extent.width >> display.subresource.mip),
+        RDCMAX(1U, iminfo.extent.height >> display.subresource.mip)}},
       1,
       &clearval,
   };
 
-  LockedConstImageStateRef imageState = m_pDriver->FindConstImageState(texid);
+  LockedConstImageStateRef imageState = m_pDriver->FindConstImageState(display.resourceId);
   if(!imageState)
   {
-    RDCWARN("Could not find image info for image %s", ToStr(texid).c_str());
+    RDCWARN("Could not find image info for image %s", ToStr(display.resourceId).c_str());
     return ResourceId();
   }
   if(!imageState->isMemoryBound)

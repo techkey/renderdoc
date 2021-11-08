@@ -64,6 +64,13 @@ enum VulkanDynamicStateIndex
   VkDynamicStencilTestEnableEXT,
   VkDynamicStencilOpEXT,
   VkDynamicRayTracingStackSizeEXT,
+  VkDynamicVertexInputEXT,
+  VkDynamicControlPointsEXT,
+  VkDynamicRastDiscardEXT,
+  VkDynamicDepthBiasEnableEXT,
+  VkDynamicLogicOpEXT,
+  VkDynamicPrimRestartEXT,
+  VkDynamicColorWriteEXT,
   VkDynamicCount,
 };
 
@@ -249,6 +256,12 @@ struct VulkanCreationInfo
     ResourceId renderpass;
     uint32_t subpass;
 
+    // VkPipelineRenderingCreateInfoKHR
+    uint32_t viewMask;
+    rdcarray<VkFormat> colorFormats;
+    VkFormat depthFormat;
+    VkFormat stencilFormat;
+
     // a variant of the pipeline that uses subpass 0, used for when we are replaying in isolation.
     // See loadRPs in the RenderPass info
     VkPipeline subpass0pipe;
@@ -272,7 +285,7 @@ struct VulkanCreationInfo
     Shader shaders[6];
 
     // VkPipelineVertexInputStateCreateInfo
-    struct Binding
+    struct VertBinding
     {
       uint32_t vbufferBinding;
       uint32_t bytestride;
@@ -281,7 +294,7 @@ struct VulkanCreationInfo
       // VkVertexInputBindingDivisorDescriptionEXT
       uint32_t instanceDivisor;
     };
-    rdcarray<Binding> vertexBindings;
+    rdcarray<VertBinding> vertexBindings;
 
     struct Attribute
     {
@@ -367,7 +380,7 @@ struct VulkanCreationInfo
     VkLogicOp logicOp;
     float blendConst[4];
 
-    struct Attachment
+    struct CBAttachment
     {
       bool blendEnable;
 
@@ -380,7 +393,7 @@ struct VulkanCreationInfo
 
       uint8_t channelWriteMask;
     };
-    rdcarray<Attachment> attachments;
+    rdcarray<CBAttachment> attachments;
 
     // VkPipelineDynamicStateCreateInfo
     bool dynamicStates[VkDynamicCount];
