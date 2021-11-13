@@ -2448,6 +2448,10 @@ void main()
         "%_out_float4 = OpVectorShuffle %float4 %float4_dyn_0000 %float4_dyn_1234 7 6 0 1",
         "%_out_float3 = OpVectorShuffle %float3 %float3_000 %float3_123 3 4 5",
         "%_out_float2 = OpVectorShuffle %float2 %float2_00 %float2_12 2 3",
+
+        // test 0xffffffff component inputs
+        "%_tmp = OpVectorShuffle %float4 %float4_0000 %float4_1234 5 4 4294967295 4294967295\n"
+        "%_out_float4 = OpVectorShuffle %float4 %_tmp %float4_dyn_1234 0 1 4 5",
     });
 
     // test OpVectorExtractDynamic
@@ -3942,8 +3946,8 @@ OpMemberDecorate %cbuffer_struct 17 Offset 216    ; double doublePackSource
     Vec4f cbufferdata[64] = {};
 
     AllocatedBuffer cb(
-        this, vkh::BufferCreateInfo(sizeof(cbufferdata), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
-                                                             VK_BUFFER_USAGE_TRANSFER_DST_BIT),
+        this, vkh::BufferCreateInfo(sizeof(cbufferdata) * 2, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+                                                                 VK_BUFFER_USAGE_TRANSFER_DST_BIT),
         VmaAllocationCreateInfo({0, VMA_MEMORY_USAGE_CPU_TO_GPU}));
 
     cbufferdata[1] = Vec4f(1.1f, 2.2f, 3.3f, 4.4f);
@@ -4054,9 +4058,9 @@ OpMemberDecorate %cbuffer_struct 17 Offset 216    ; double doublePackSource
         device,
         {
             vkh::WriteDescriptorSet(descset0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-                                    {vkh::DescriptorBufferInfo(cb.buffer)}),
+                                    {vkh::DescriptorBufferInfo(cb.buffer, 0, sizeof(cbufferdata))}),
             vkh::WriteDescriptorSet(descset0, 10, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-                                    {vkh::DescriptorBufferInfo(cb.buffer)}),
+                                    {vkh::DescriptorBufferInfo(cb.buffer, 0, sizeof(cbufferdata))}),
             vkh::WriteDescriptorSet(
                 descset0, 11, VK_DESCRIPTOR_TYPE_SAMPLER,
                 {vkh::DescriptorImageInfo(VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED, pointsampler)}),
