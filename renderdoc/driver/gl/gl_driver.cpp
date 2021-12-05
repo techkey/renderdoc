@@ -3608,6 +3608,7 @@ bool WrappedOpenGL::ProcessChunk(ReadSerialiser &ser, GLChunk chunk)
     case GLChunk::glUnmapNamedBufferEXT: return Serialise_glUnmapNamedBufferEXT(ser, 0);
     case GLChunk::CoherentMapWrite:
     case GLChunk::glFlushMappedBufferRange:
+    case GLChunk::glFlushMappedBufferRangeEXT:
     case GLChunk::glFlushMappedNamedBufferRange:
     case GLChunk::glFlushMappedNamedBufferRangeEXT:
       return Serialise_glFlushMappedNamedBufferRangeEXT(ser, 0, 0, 0);
@@ -4749,6 +4750,25 @@ bool WrappedOpenGL::ProcessChunk(ReadSerialiser &ser, GLChunk chunk)
     case GLChunk::glInvalidateBufferSubData:
       return Serialise_glInvalidateBufferSubData(ser, 0, 0, 0);
 
+    case GLChunk::glGetQueryObjecti64v:
+    case GLChunk::glGetQueryObjecti64vEXT:
+    case GLChunk::glGetQueryBufferObjecti64v:
+      return Serialise_glGetQueryBufferObjecti64v(ser, 0, 0, eGL_NONE, 0);
+    case GLChunk::glGetQueryObjectiv:
+    case GLChunk::glGetQueryObjectivARB:
+    case GLChunk::glGetQueryObjectivEXT:
+    case GLChunk::glGetQueryBufferObjectiv:
+      return Serialise_glGetQueryBufferObjectiv(ser, 0, 0, eGL_NONE, 0);
+    case GLChunk::glGetQueryObjectui64v:
+    case GLChunk::glGetQueryObjectui64vEXT:
+    case GLChunk::glGetQueryBufferObjectui64v:
+      return Serialise_glGetQueryBufferObjectui64v(ser, 0, 0, eGL_NONE, 0);
+    case GLChunk::glGetQueryObjectuiv:
+    case GLChunk::glGetQueryObjectuivARB:
+    case GLChunk::glGetQueryObjectuivEXT:
+    case GLChunk::glGetQueryBufferObjectuiv:
+      return Serialise_glGetQueryBufferObjectuiv(ser, 0, 0, eGL_NONE, 0);
+
     // these functions are not currently serialised - they do nothing on replay and are not
     // serialised for information (it would be harmless and perhaps useful for the user to see
     // where and how they're called).
@@ -4873,24 +4893,10 @@ bool WrappedOpenGL::ProcessChunk(ReadSerialiser &ser, GLChunk chunk)
     case GLChunk::glGetProgramResourceLocationIndex:
     case GLChunk::glGetProgramResourceName:
     case GLChunk::glGetProgramStageiv:
-    case GLChunk::glGetQueryBufferObjecti64v:
-    case GLChunk::glGetQueryBufferObjectiv:
-    case GLChunk::glGetQueryBufferObjectui64v:
-    case GLChunk::glGetQueryBufferObjectuiv:
     case GLChunk::glGetQueryIndexediv:
     case GLChunk::glGetQueryiv:
     case GLChunk::glGetQueryivARB:
     case GLChunk::glGetQueryivEXT:
-    case GLChunk::glGetQueryObjecti64v:
-    case GLChunk::glGetQueryObjecti64vEXT:
-    case GLChunk::glGetQueryObjectiv:
-    case GLChunk::glGetQueryObjectivARB:
-    case GLChunk::glGetQueryObjectivEXT:
-    case GLChunk::glGetQueryObjectui64v:
-    case GLChunk::glGetQueryObjectui64vEXT:
-    case GLChunk::glGetQueryObjectuiv:
-    case GLChunk::glGetQueryObjectuivARB:
-    case GLChunk::glGetQueryObjectuivEXT:
     case GLChunk::glGetRenderbufferParameteriv:
     case GLChunk::glGetRenderbufferParameterivEXT:
     case GLChunk::glGetSamplerParameterfv:
@@ -5042,6 +5048,7 @@ bool WrappedOpenGL::ProcessChunk(ReadSerialiser &ser, GLChunk chunk)
     case GLChunk::glMapBufferARB:
     case GLChunk::glMapBufferOES:
     case GLChunk::glMapBufferRange:
+    case GLChunk::glMapBufferRangeEXT:
     case GLChunk::glMapNamedBuffer:
     case GLChunk::glMapNamedBufferEXT:
     case GLChunk::glMapNamedBufferRange:

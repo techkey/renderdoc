@@ -341,6 +341,10 @@ void Serialiser<SerialiserMode::Writing>::SetChunkMetadataRecording(uint32_t fla
 template <>
 uint32_t Serialiser<SerialiserMode::Writing>::BeginChunk(uint32_t chunkID, uint64_t byteLength)
 {
+  // cannot start a chunk inside a chunk
+  RDCASSERTMSG("Beginning a chunk inside another chunk", m_ChunkMetadata.chunkID == 0,
+               m_ChunkMetadata.chunkID);
+
   {
     // chunk index needs to be valid
     RDCASSERT(chunkID > 0);
@@ -589,7 +593,9 @@ void Serialiser<SerialiserMode::Writing>::WriteStructuredFile(const SDFile &file
       scratchWriter.m_ChunkFlags = m_ChunkFlags;
     }
 
-    ser->BeginChunk(m_ChunkMetadata.chunkID, m_ChunkMetadata.length);
+    m_ChunkMetadata.chunkID = 0;
+
+    ser->BeginChunk(chunk.metadata.chunkID, m_ChunkMetadata.length);
 
     if(chunk.metadata.flags & SDChunkFlags::OpaqueChunk)
     {

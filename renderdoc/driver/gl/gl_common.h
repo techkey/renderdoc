@@ -2245,6 +2245,9 @@ enum class GLChunk : uint32_t
 
   ImplicitThreadSwitch,
 
+  glMapBufferRangeEXT,
+  glFlushMappedBufferRangeEXT,
+
   Max,
 };
 
