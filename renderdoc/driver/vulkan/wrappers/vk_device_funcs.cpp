@@ -1601,14 +1601,14 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
 
     RDCLOG("Creating replay device from physical device %u", physicalDeviceIndex);
 
-    rdcarray<VkDeviceQueueGlobalPriorityCreateInfoEXT *> queuePriorities;
+    rdcarray<VkDeviceQueueGlobalPriorityCreateInfoKHR *> queuePriorities;
 
     for(uint32_t i = 0; i < CreateInfo.queueCreateInfoCount; i++)
     {
-      VkDeviceQueueGlobalPriorityCreateInfoEXT *queuePrio =
-          (VkDeviceQueueGlobalPriorityCreateInfoEXT *)FindNextStruct(
+      VkDeviceQueueGlobalPriorityCreateInfoKHR *queuePrio =
+          (VkDeviceQueueGlobalPriorityCreateInfoKHR *)FindNextStruct(
               &CreateInfo.pQueueCreateInfos[i],
-              VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT);
+              VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_KHR);
 
       if(queuePrio)
         queuePriorities.push_back(queuePrio);
@@ -1624,26 +1624,18 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       Extensions.push_back(createInfo.ppEnabledExtensionNames[i]);
     }
 
-    rdcarray<rdcstr> Layers;
-    for(uint32_t i = 0; i < createInfo.enabledLayerCount; i++)
-      Layers.push_back(createInfo.ppEnabledLayerNames[i]);
-
-    StripUnwantedLayers(Layers);
     StripUnwantedExtensions(Extensions);
 
     std::set<rdcstr> supportedExtensions;
 
-    for(size_t i = 0; i <= Layers.size(); i++)
     {
-      const char *pLayerName = (i == 0 ? NULL : Layers[i - 1].c_str());
-
       uint32_t count = 0;
       ObjDisp(physicalDevice)
-          ->EnumerateDeviceExtensionProperties(Unwrap(physicalDevice), pLayerName, &count, NULL);
+          ->EnumerateDeviceExtensionProperties(Unwrap(physicalDevice), NULL, &count, NULL);
 
       VkExtensionProperties *props = new VkExtensionProperties[count];
       ObjDisp(physicalDevice)
-          ->EnumerateDeviceExtensionProperties(Unwrap(physicalDevice), pLayerName, &count, props);
+          ->EnumerateDeviceExtensionProperties(Unwrap(physicalDevice), NULL, &count, props);
 
       for(uint32_t e = 0; e < count; e++)
         supportedExtensions.insert(props[e].extensionName);
@@ -1720,6 +1712,14 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
     {
       Extensions.push_back(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME);
       RDCLOG("Enabling VK_KHR_driver_properties");
+    }
+
+    // enable VK_KHR_shader_non_semantic_info if it's available, to enable debug printf
+    if(supportedExtensions.find(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME) !=
+       supportedExtensions.end())
+    {
+      Extensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
+      RDCLOG("Enabling VK_KHR_shader_non_semantic_info");
     }
 
     bool pipeExec = false;
@@ -2054,14 +2054,21 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
 
     // remove structs from extensions that we have stripped but may still be referenced here,
     // to ensure we don't pass structs for disabled extensions.
-    if(RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_DEVICE_PRIVATE_DATA_CREATE_INFO_EXT) ||
-       RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIVATE_DATA_FEATURES_EXT))
+    bool private_data = false;
+    private_data |= RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_DEVICE_PRIVATE_DATA_CREATE_INFO);
+    private_data |=
+        RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIVATE_DATA_FEATURES);
+    if(private_data)
     {
       RDCLOG("Removed VK_EXT_private_data structs from vkCreateDevice pNext chain");
     }
 
-    if(RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR) ||
-       RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR))
+    bool present_id = false;
+    present_id |=
+        RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR);
+    present_id |=
+        RemoveNextStruct(&createInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR);
+    if(present_id)
     {
       RDCLOG("Removed VK_KHR_present_id/wait structs from vkCreateDevice pNext chain");
     }
@@ -2254,6 +2261,27 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
               "replay");
           return false;
         }
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceVulkan13Features,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES);
+      {
+        CHECK_PHYS_EXT_FEATURE(robustImageAccess);
+        CHECK_PHYS_EXT_FEATURE(inlineUniformBlock);
+        CHECK_PHYS_EXT_FEATURE(descriptorBindingInlineUniformBlockUpdateAfterBind);
+        CHECK_PHYS_EXT_FEATURE(pipelineCreationCacheControl);
+        CHECK_PHYS_EXT_FEATURE(privateData);
+        CHECK_PHYS_EXT_FEATURE(shaderDemoteToHelperInvocation);
+        CHECK_PHYS_EXT_FEATURE(shaderTerminateInvocation);
+        CHECK_PHYS_EXT_FEATURE(subgroupSizeControl);
+        CHECK_PHYS_EXT_FEATURE(computeFullSubgroups);
+        CHECK_PHYS_EXT_FEATURE(synchronization2);
+        CHECK_PHYS_EXT_FEATURE(textureCompressionASTC_HDR);
+        CHECK_PHYS_EXT_FEATURE(shaderZeroInitializeWorkgroupMemory);
+        CHECK_PHYS_EXT_FEATURE(dynamicRendering);
+        CHECK_PHYS_EXT_FEATURE(shaderIntegerDotProduct);
+        CHECK_PHYS_EXT_FEATURE(maintenance4);
       }
       END_PHYS_EXT_CHECK();
 
@@ -2496,8 +2524,8 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       END_PHYS_EXT_CHECK();
 
       BEGIN_PHYS_EXT_CHECK(
-          VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT,
-          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT);
+          VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures,
+          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(shaderDemoteToHelperInvocation);
       }
@@ -2524,8 +2552,8 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       }
       END_PHYS_EXT_CHECK();
 
-      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceSubgroupSizeControlFeaturesEXT,
-                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES_EXT);
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceSubgroupSizeControlFeatures,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(subgroupSizeControl);
         CHECK_PHYS_EXT_FEATURE(computeFullSubgroups);
@@ -2603,9 +2631,8 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       }
       END_PHYS_EXT_CHECK();
 
-      BEGIN_PHYS_EXT_CHECK(
-          VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR,
-          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR);
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceSeparateDepthStencilLayoutsFeatures,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(separateDepthStencilLayouts);
 
@@ -2621,8 +2648,8 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       }
       END_PHYS_EXT_CHECK();
 
-      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceInlineUniformBlockFeaturesEXT,
-                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INLINE_UNIFORM_BLOCK_FEATURES_EXT);
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceInlineUniformBlockFeatures,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INLINE_UNIFORM_BLOCK_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(inlineUniformBlock);
         CHECK_PHYS_EXT_FEATURE(descriptorBindingInlineUniformBlockUpdateAfterBind);
@@ -2649,8 +2676,8 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       END_PHYS_EXT_CHECK();
 
       BEGIN_PHYS_EXT_CHECK(
-          VkPhysicalDevicePipelineCreationCacheControlFeaturesEXT,
-          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_CREATION_CACHE_CONTROL_FEATURES_EXT);
+          VkPhysicalDevicePipelineCreationCacheControlFeatures,
+          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_CREATION_CACHE_CONTROL_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(pipelineCreationCacheControl);
       }
@@ -2673,16 +2700,15 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       }
       END_PHYS_EXT_CHECK();
 
-      BEGIN_PHYS_EXT_CHECK(
-          VkPhysicalDeviceShaderTerminateInvocationFeaturesKHR,
-          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_TERMINATE_INVOCATION_FEATURES_KHR);
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceShaderTerminateInvocationFeatures,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_TERMINATE_INVOCATION_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(shaderTerminateInvocation);
       }
       END_PHYS_EXT_CHECK();
 
-      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceImageRobustnessFeaturesEXT,
-                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_ROBUSTNESS_FEATURES_EXT);
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceImageRobustnessFeatures,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_ROBUSTNESS_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(robustImageAccess);
       }
@@ -2715,8 +2741,8 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       END_PHYS_EXT_CHECK();
 
       BEGIN_PHYS_EXT_CHECK(
-          VkPhysicalDeviceZeroInitializeWorkgroupMemoryFeaturesKHR,
-          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ZERO_INITIALIZE_WORKGROUP_MEMORY_FEATURES_KHR);
+          VkPhysicalDeviceZeroInitializeWorkgroupMemoryFeatures,
+          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ZERO_INITIALIZE_WORKGROUP_MEMORY_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(shaderZeroInitializeWorkgroupMemory);
       }
@@ -2733,22 +2759,22 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       }
       END_PHYS_EXT_CHECK();
 
-      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceSynchronization2FeaturesKHR,
-                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR);
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceSynchronization2Features,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(synchronization2);
       }
       END_PHYS_EXT_CHECK();
 
-      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceMaintenance4FeaturesKHR,
-                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES_KHR);
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceMaintenance4Features,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(maintenance4);
       }
       END_PHYS_EXT_CHECK();
 
-      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceShaderIntegerDotProductFeaturesKHR,
-                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES_KHR);
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceShaderIntegerDotProductFeatures,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(shaderIntegerDotProduct);
       }
@@ -2794,8 +2820,8 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       }
       END_PHYS_EXT_CHECK();
 
-      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceGlobalPriorityQueryFeaturesEXT,
-                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GLOBAL_PRIORITY_QUERY_FEATURES_EXT);
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceGlobalPriorityQueryFeaturesKHR,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GLOBAL_PRIORITY_QUERY_FEATURES_KHR);
       {
         CHECK_PHYS_EXT_FEATURE(globalPriorityQuery);
       }
@@ -2830,10 +2856,25 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       }
       END_PHYS_EXT_CHECK();
 
-      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceDynamicRenderingFeaturesKHR,
-                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR);
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceDynamicRenderingFeatures,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES);
       {
         CHECK_PHYS_EXT_FEATURE(dynamicRendering);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDevice4444FormatsFeaturesEXT,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_4444_FORMATS_FEATURES_EXT);
+      {
+        CHECK_PHYS_EXT_FEATURE(formatA4R4G4B4);
+        CHECK_PHYS_EXT_FEATURE(formatA4B4G4R4);
+      }
+      END_PHYS_EXT_CHECK();
+
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceTextureCompressionASTCHDRFeatures,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES);
+      {
+        CHECK_PHYS_EXT_FEATURE(textureCompressionASTC_HDR);
       }
       END_PHYS_EXT_CHECK();
     }
@@ -3130,7 +3171,7 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR,
     };
 
-    if(physProps.apiVersion >= VK_MAKE_VERSION(1, 2, 0))
+    if(RDCMIN(m_EnabledExtensions.vulkanVersion, physProps.apiVersion) >= VK_MAKE_VERSION(1, 2, 0))
     {
       VkPhysicalDeviceVulkan12Features avail12Features = {
           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
@@ -3266,12 +3307,12 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       }
     }
 
-    rdcarray<const char *> layerArray(Layers.size());
-    for(size_t i = 0; i < Layers.size(); i++)
-      layerArray[i] = Layers[i].c_str();
+    rdcarray<const char *> layerArray(m_InitParams.Layers.size());
+    for(size_t i = 0; i < m_InitParams.Layers.size(); i++)
+      layerArray[i] = m_InitParams.Layers[i].c_str();
 
-    createInfo.enabledLayerCount = (uint32_t)layerArray.size();
-    createInfo.ppEnabledLayerNames = layerArray.data();
+    createInfo.enabledLayerCount = 0;
+    createInfo.ppEnabledLayerNames = NULL;
 
     rdcarray<const char *> extArray(Extensions.size());
     for(size_t i = 0; i < Extensions.size(); i++)
@@ -3302,7 +3343,7 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
     {
       RDCWARN("Failed to create logical device: %s. Reducing queue priorities", ToStr(vkr).c_str());
 
-      for(VkDeviceQueueGlobalPriorityCreateInfoEXT *q : queuePriorities)
+      for(VkDeviceQueueGlobalPriorityCreateInfoKHR *q : queuePriorities)
       {
         // medium is considered the default if no priority is set otherwise
         if(q->globalPriority > VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_EXT)
@@ -3335,11 +3376,13 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
 
     CheckDeviceExts();
 
+    uint32_t effectiveApiVersion = RDCMIN(m_EnabledExtensions.vulkanVersion, physProps.apiVersion);
+
 #undef CheckExt
-#define CheckExt(name, ver)                                                                      \
-  if(!strcmp(createInfo.ppEnabledExtensionNames[i], "VK_" #name) || physProps.apiVersion >= ver) \
-  {                                                                                              \
-    m_EnabledExtensions.ext_##name = true;                                                       \
+#define CheckExt(name, ver)                                                                     \
+  if(!strcmp(createInfo.ppEnabledExtensionNames[i], "VK_" #name) || effectiveApiVersion >= ver) \
+  {                                                                                             \
+    m_EnabledExtensions.ext_##name = true;                                                      \
   }
 
     for(uint32_t i = 0; i < createInfo.enabledExtensionCount; i++)
@@ -3350,7 +3393,7 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
     // for cases where a promoted extension isn't supported as the extension itself, manually
     // disable them when the feature bit is false.
 
-    if(physProps.apiVersion >= VK_MAKE_VERSION(1, 2, 0))
+    if(effectiveApiVersion >= VK_MAKE_VERSION(1, 2, 0))
     {
       if(supportedExtensions.find(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) ==
              supportedExtensions.end() &&
@@ -3734,9 +3777,9 @@ VkResult WrappedVulkan::vkCreateDevice(VkPhysicalDevice physicalDevice,
 
   // check features that we care about at capture time
 
-  const VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR *separateDepthStencilFeatures =
-      (const VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR *)FindNextStruct(
-          &createInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR);
+  const VkPhysicalDeviceSeparateDepthStencilLayoutsFeatures *separateDepthStencilFeatures =
+      (const VkPhysicalDeviceSeparateDepthStencilLayoutsFeatures *)FindNextStruct(
+          &createInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES);
 
   if(separateDepthStencilFeatures)
     m_SeparateDepthStencil |= (separateDepthStencilFeatures->separateDepthStencilLayouts != VK_FALSE);

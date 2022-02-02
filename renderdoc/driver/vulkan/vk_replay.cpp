@@ -28,8 +28,9 @@
 #include <math.h>
 #include <algorithm>
 #include "core/settings.h"
+#include "data/glsl_shaders.h"
 #include "driver/ihv/amd/amd_rgp.h"
-#include "driver/shaders/spirv/spirv_compile.h"
+#include "driver/shaders/spirv/glslang_compile.h"
 #include "maths/formatpacking.h"
 #include "maths/matrix.h"
 #include "replay/dummy_driver.h"
@@ -782,6 +783,8 @@ void VulkanReplay::RenderCheckerboard(FloatVector dark, FloatVector light)
   if(m_Overlay.m_CheckerPipeline != VK_NULL_HANDLE)
   {
     CheckerboardUBOData *data = (CheckerboardUBOData *)m_Overlay.m_CheckerUBO.Map(&uboOffs);
+    if(!data)
+      return;
     data->BorderWidth = 0.0f;
     data->RectPosition = Vec2f();
     data->RectSize = Vec2f();
@@ -1266,7 +1269,7 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
 
         if(idx == -1)
         {
-          RDCERR("Couldn't find offset for spec ID %u", s.specID);
+          RDCWARN("Couldn't find offset for spec ID %u", s.specID);
           continue;
         }
 
@@ -1888,7 +1891,7 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
             case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
               dst.bindings[b].type = BindType::InputAttachment;
               break;
-            case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT:
+            case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
               dst.bindings[b].descriptorCount = 1;
               dst.bindings[b].type = BindType::ConstantBuffer;
               break;
@@ -2086,7 +2089,7 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
                 dst.bindings[b].binds[a].byteSize = 0;
               }
             }
-            else if(layoutBind.descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT)
+            else if(layoutBind.descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
             {
               dst.bindings[b].binds[a].viewResourceId = ResourceId();
               dst.bindings[b].binds[a].resourceResourceId = ResourceId();
@@ -2230,7 +2233,7 @@ void VulkanReplay::FillCBufferVariables(ResourceId pipeline, ResourceId shader, 
         const DescSetLayout::Binding &layoutBind =
             m_pDriver->m_CreationInfo.m_DescSetLayout[layoutId].bindings[bind.bind];
 
-        if(layoutBind.descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT)
+        if(layoutBind.descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
         {
           bytebuf inlineData;
           inlineData.assign(
@@ -2401,6 +2404,12 @@ void VulkanReplay::PickPixel(ResourceId texture, uint32_t x, uint32_t y, const S
     CheckVkResult(vkr);
     if(vkr != VK_SUCCESS)
       return;
+    if(!pData)
+    {
+      RDCERR("Manually reporting failed memory map");
+      CheckVkResult(VK_ERROR_MEMORY_MAP_FAILED);
+      return;
+    }
 
     VkMappedMemoryRange range = {
         VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
@@ -2651,6 +2660,8 @@ bool VulkanReplay::GetMinMax(ResourceId texid, const Subresource &sub, CompType 
   vt->UpdateDescriptorSets(Unwrap(dev), (uint32_t)writeSets.size(), &writeSets[0], 0, NULL);
 
   HistogramUBOData *data = (HistogramUBOData *)m_Histogram.m_HistogramUBO.Map(NULL);
+  if(!data)
+    return false;
 
   data->HistogramTextureResolution.x = (float)RDCMAX(uint32_t(iminfo.extent.width) >> sub.mip, 1U);
   data->HistogramTextureResolution.y = (float)RDCMAX(uint32_t(iminfo.extent.height) >> sub.mip, 1U);
@@ -2775,6 +2786,8 @@ bool VulkanReplay::GetMinMax(ResourceId texid, const Subresource &sub, CompType 
   m_pDriver->FlushQ();
 
   Vec4f *minmax = (Vec4f *)m_Histogram.m_MinMaxReadback.Map(NULL);
+  if(!minmax)
+    return false;
 
   minval[0] = minmax[0].x;
   minval[1] = minmax[0].y;
@@ -2957,6 +2970,8 @@ bool VulkanReplay::GetHistogram(ResourceId texid, const Subresource &sub, CompTy
   vt->UpdateDescriptorSets(Unwrap(dev), (uint32_t)writeSets.size(), &writeSets[0], 0, NULL);
 
   HistogramUBOData *data = (HistogramUBOData *)m_Histogram.m_HistogramUBO.Map(NULL);
+  if(!data)
+    return false;
 
   data->HistogramTextureResolution.x = (float)RDCMAX(uint32_t(iminfo.extent.width) >> sub.mip, 1U);
   data->HistogramTextureResolution.y = (float)RDCMAX(uint32_t(iminfo.extent.height) >> sub.mip, 1U);
@@ -3088,6 +3103,8 @@ bool VulkanReplay::GetHistogram(ResourceId texid, const Subresource &sub, CompTy
   m_pDriver->FlushQ();
 
   uint32_t *buckets = (uint32_t *)m_Histogram.m_HistogramReadback.Map(NULL);
+  if(!buckets)
+    return false;
 
   histogram.assign(buckets, HGRAM_NUM_BUCKETS);
 
@@ -3870,6 +3887,12 @@ void VulkanReplay::GetTextureData(ResourceId tex, const Subresource &sub,
   CheckVkResult(vkr);
   if(vkr != VK_SUCCESS)
     return;
+  if(!pData)
+  {
+    RDCERR("Manually reporting failed memory map");
+    CheckVkResult(VK_ERROR_MEMORY_MAP_FAILED);
+    return;
+  }
 
   VkMappedMemoryRange range = {
       VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, NULL, readbackMem, 0, VK_WHOLE_SIZE,
@@ -4040,6 +4063,17 @@ void VulkanReplay::BuildCustomShader(ShaderEncoding sourceEncoding, const bytebu
                                      const rdcstr &entry, const ShaderCompileFlags &compileFlags,
                                      ShaderStage type, ResourceId &id, rdcstr &errors)
 {
+  if(sourceEncoding == ShaderEncoding::GLSL)
+  {
+    rdcstr sourceText = InsertSnippetAfterVersion(ShaderType::Vulkan, (const char *)source.data(),
+                                                  source.count(), GLSL_CUSTOM_PREFIX);
+
+    bytebuf patchedSource;
+    patchedSource.assign((byte *)sourceText.begin(), sourceText.size());
+
+    return BuildTargetShader(sourceEncoding, patchedSource, entry, compileFlags, type, id, errors);
+  }
+
   BuildTargetShader(sourceEncoding, source, entry, compileFlags, type, id, errors);
 }
 
@@ -4113,6 +4147,20 @@ ResourceId VulkanReplay::ApplyCustomShader(TextureDisplay &display)
   m_DebugHeight = oldH;
 
   return GetResID(GetDebugManager()->GetCustomTexture());
+}
+
+rdcarray<ShaderSourcePrefix> VulkanReplay::GetCustomShaderSourcePrefixes()
+{
+  // this is a complete hack, since we *do* want to define a prefix for GLSL. However GLSL sucks
+  // and has the #version as the first thing, so we can't do a simple prepend of some defines.
+  // Instead we will return no prefix and insert our own in BuildCustomShader if we see GLSL
+  // coming in.
+  // For SPIR-V no prefix is needed (or possible)
+  // For HLSL however we define our HLSL prefix so that custom-compiled HLSL to SPIR-V gets the
+  // right binding and helper definitions
+  return {
+      {ShaderEncoding::HLSL, HLSL_CUSTOM_PREFIX},
+  };
 }
 
 void VulkanReplay::BuildTargetShader(ShaderEncoding sourceEncoding, const bytebuf &source,
@@ -4253,7 +4301,8 @@ void VulkanReplay::RefreshDerivedReplacements()
     {
       VkPipeline pipe = VK_NULL_HANDLE;
 
-      if(pipeInfo.renderpass != ResourceId())    // check if this is a graphics or compute pipeline
+      // check if this is a graphics or compute pipeline
+      if(pipeInfo.graphicsPipe)
       {
         VkGraphicsPipelineCreateInfo pipeCreateInfo;
         m_pDriver->GetShaderCache()->MakeGraphicsPipelineInfo(pipeCreateInfo, it->first);

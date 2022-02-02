@@ -217,7 +217,7 @@ void Reflector::CheckDebuggable(bool &debuggable, rdcstr &debugStatus) const
   debuggable = true;
   debugStatus.clear();
 
-  if(m_MajorVersion > 1 || m_MinorVersion > 5)
+  if(m_MajorVersion > 1 || m_MinorVersion > 6)
   {
     debugStatus +=
         StringFormat::Fmt("Unsupported SPIR-V version %u.%u\n", m_MajorVersion, m_MinorVersion);
@@ -365,6 +365,7 @@ void Reflector::CheckDebuggable(bool &debuggable, rdcstr &debugStatus) const
       case Capability::Int64ImageEXT:
       case Capability::ExpectAssumeKHR:
       case Capability::BitInstructions:
+      case Capability::UniformDecoration:
       {
         supported = true;
         break;
@@ -516,6 +517,7 @@ void Reflector::CheckDebuggable(bool &debuggable, rdcstr &debugStatus) const
       case Capability::IOPipesINTEL:
       case Capability::LongConstantCompositeINTEL:
       case Capability::DebugInfoModuleINTEL:
+      case Capability::BindlessTextureNV:
       case Capability::Max:
       case Capability::Invalid:
       {

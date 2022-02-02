@@ -431,6 +431,8 @@ void VulkanDebugManager::PatchLineStripIndexBuffer(const ActionDescription *acti
                      GPUBuffer::eGPUBufferIBuffer);
 
   void *ptr = indexBuffer.Map(0, patchedIndices.size() * sizeof(uint32_t));
+  if(!ptr)
+    return;
   memcpy(ptr, patchedIndices.data(), patchedIndices.size() * sizeof(uint32_t));
   indexBuffer.Unmap();
 
@@ -1305,6 +1307,8 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
         uint32_t uboOffs = 0;
 
         CheckerboardUBOData *ubo = (CheckerboardUBOData *)m_Overlay.m_CheckerUBO.Map(&uboOffs);
+        if(!ubo)
+          return ResourceId();
 
         ubo->BorderWidth = 3;
         ubo->CheckerSquareDimension = 16.0f;
@@ -1345,6 +1349,8 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
                         (float)state.scissors[0].extent.height);
 
           ubo = (CheckerboardUBOData *)m_Overlay.m_CheckerUBO.Map(&uboOffs);
+          if(!ubo)
+            return ResourceId();
 
           ubo->BorderWidth = 3;
           ubo->CheckerSquareDimension = 16.0f;
@@ -2387,6 +2393,8 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
 
         uint32_t meshOffs = 0;
         MeshUBOData *data = (MeshUBOData *)m_MeshRender.UBO.Map(&meshOffs);
+        if(!data)
+          return ResourceId();
 
         data->mvp = Matrix4f::Identity();
         data->invProj = Matrix4f::Identity();
@@ -2401,6 +2409,8 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
 
         uint32_t viewOffs = 0;
         Vec4f *ubo = (Vec4f *)m_Overlay.m_TriSizeUBO.Map(&viewOffs);
+        if(!ubo)
+          return ResourceId();
         *ubo = Vec4f(state.views[0].width, state.views[0].height);
         m_Overlay.m_TriSizeUBO.Unmap();
 
@@ -2614,9 +2624,9 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
           // we are controlling the vertex binding so we don't need the stride or input to be
           // dynamic.
           // Similarly we're controlling the topology so that doesn't need to be dynamic
-          if(dynamicStateList[i] == VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE_EXT ||
+          if(dynamicStateList[i] == VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE ||
              dynamicStateList[i] == VK_DYNAMIC_STATE_VERTEX_INPUT_EXT ||
-             dynamicStateList[i] == VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY_EXT)
+             dynamicStateList[i] == VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY)
           {
             // swap with the last item if this isn't the last one
             if(i != dynamicStateCount - 1)
@@ -2747,54 +2757,54 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
                   vt->CmdSetStencilReference(Unwrap(cmd), VK_STENCIL_FACE_BACK_BIT, state.back.ref);
                   vt->CmdSetStencilReference(Unwrap(cmd), VK_STENCIL_FACE_FRONT_BIT, state.front.ref);
                 }
-                else if(d == VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT)
+                else if(d == VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT)
                 {
                   vt->CmdSetViewportWithCountEXT(Unwrap(cmd), (uint32_t)state.views.size(),
                                                  state.views.data());
                 }
-                else if(d == VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT)
+                else if(d == VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT)
                 {
                   vt->CmdSetScissorWithCountEXT(Unwrap(cmd), (uint32_t)state.scissors.size(),
                                                 state.scissors.data());
                 }
-                else if(d == VK_DYNAMIC_STATE_CULL_MODE_EXT)
+                else if(d == VK_DYNAMIC_STATE_CULL_MODE)
                 {
                   vt->CmdSetCullModeEXT(Unwrap(cmd), state.cullMode);
                 }
-                else if(d == VK_DYNAMIC_STATE_FRONT_FACE_EXT)
+                else if(d == VK_DYNAMIC_STATE_FRONT_FACE)
                 {
                   vt->CmdSetFrontFaceEXT(Unwrap(cmd), state.frontFace);
                 }
-                else if(d == VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY_EXT)
+                else if(d == VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY)
                 {
                   RDCERR("Primitive topology dynamic state found, should have been stripped");
                 }
-                else if(d == VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE_EXT)
+                else if(d == VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE)
                 {
                   RDCERR(
                       "Vertex input binding stride dynamic state found, should have been stripped");
                 }
-                else if(d == VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE_EXT)
+                else if(d == VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE)
                 {
                   vt->CmdSetDepthTestEnableEXT(Unwrap(cmd), state.depthTestEnable);
                 }
-                else if(d == VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE_EXT)
+                else if(d == VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE)
                 {
                   vt->CmdSetDepthWriteEnableEXT(Unwrap(cmd), state.depthWriteEnable);
                 }
-                else if(d == VK_DYNAMIC_STATE_DEPTH_COMPARE_OP_EXT)
+                else if(d == VK_DYNAMIC_STATE_DEPTH_COMPARE_OP)
                 {
                   vt->CmdSetDepthCompareOpEXT(Unwrap(cmd), state.depthCompareOp);
                 }
-                else if(d == VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE_EXT)
+                else if(d == VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE)
                 {
                   vt->CmdSetDepthBoundsTestEnableEXT(Unwrap(cmd), state.depthBoundsTestEnable);
                 }
-                else if(d == VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE_EXT)
+                else if(d == VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE)
                 {
                   vt->CmdSetStencilTestEnableEXT(Unwrap(cmd), state.stencilTestEnable);
                 }
-                else if(d == VK_DYNAMIC_STATE_STENCIL_OP_EXT)
+                else if(d == VK_DYNAMIC_STATE_STENCIL_OP)
                 {
                   vt->CmdSetStencilOpEXT(Unwrap(cmd), VK_STENCIL_FACE_FRONT_BIT, state.front.failOp,
                                          state.front.passOp, state.front.depthFailOp,
@@ -2808,7 +2818,7 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
                   vt->CmdSetColorWriteEnableEXT(Unwrap(cmd), (uint32_t)state.colorWriteEnable.size(),
                                                 state.colorWriteEnable.data());
                 }
-                else if(d == VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE_EXT)
+                else if(d == VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
                 {
                   vt->CmdSetDepthBiasEnableEXT(Unwrap(cmd), state.depthBiasEnable);
                 }
@@ -2820,11 +2830,11 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
                 {
                   vt->CmdSetPatchControlPointsEXT(Unwrap(cmd), state.patchControlPoints);
                 }
-                else if(d == VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE_EXT)
+                else if(d == VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE)
                 {
                   vt->CmdSetPrimitiveRestartEnableEXT(Unwrap(cmd), state.primRestartEnable);
                 }
-                else if(d == VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE_EXT)
+                else if(d == VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE)
                 {
                   vt->CmdSetRasterizerDiscardEnableEXT(Unwrap(cmd), state.rastDiscardEnable);
                 }

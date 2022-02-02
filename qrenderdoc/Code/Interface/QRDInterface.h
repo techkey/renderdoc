@@ -187,6 +187,12 @@ See the documentation for :meth:`RegisterShortcut` for what these shortcuts are 
 )");
   virtual void UnregisterShortcut(const rdcstr &shortcut, QWidget *widget) = 0;
 
+  DOCUMENT(R"(Attempts to bring the main window to the front to the user's focus.
+
+This may not be possible on all OSs, so the function is not guaranteed to succeed.
+)");
+  virtual void BringToFront() = 0;
+
 protected:
   IMainWindow() = default;
   ~IMainWindow() = default;
@@ -1938,6 +1944,15 @@ building custom shaders for the currently loaded capture. See
 :rtype: List[renderdoc.ShaderEncoding]
 )");
   virtual rdcarray<ShaderEncoding> CustomShaderEncodings() = 0;
+
+  DOCUMENT(R"(Retrieve the list of prefixes for each :class:`~renderdoc.ShaderEncoding` that should
+be added to custom compiled shaders. See
+:meth:`~renderdoc.ReplayController.GetCustomShaderSourcePrefixes`.
+
+:return: A list of pairs, listing a prefix for each shader encoding referenced.
+:rtype: List[renderdoc.ShaderSourcePrefix]
+)");
+  virtual rdcarray<ShaderSourcePrefix> CustomShaderSourcePrefixes() = 0;
 
   DOCUMENT(R"(Retrieve the currently selected :data:`eventId <renderdoc.APIEvent.eventId>`.
 

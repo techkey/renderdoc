@@ -1338,6 +1338,7 @@ void TextureViewer::UI_OnTextureSelectionChanged(bool newAction)
   m_PrevSize = curSize;
 
   // refresh scroll position
+  UI_CalcScrollbars();
   setScrollPosition(getScrollPosition());
 
   UI_UpdateStatusText();
@@ -4245,7 +4246,8 @@ void TextureViewer::reloadCustomShaders(const QString &filter)
 
         bytebuf shaderBytes(source.toUtf8());
 
-        rdcarray<ShaderEncoding> supported = m_Ctx.TargetShaderEncodings();
+        rdcarray<ShaderEncoding> supported = m_Ctx.CustomShaderEncodings();
+        rdcarray<ShaderSourcePrefix> prefixes = m_Ctx.CustomShaderSourcePrefixes();
 
         rdcstr errors;
 
@@ -4257,6 +4259,16 @@ void TextureViewer::reloadCustomShaders(const QString &filter)
             // pick the first tool that can convert to an accepted format
             if(tool.input == encoding && supported.contains(tool.output))
             {
+              // apply any prefix needed
+              for(const ShaderSourcePrefix &prefix : prefixes)
+              {
+                if(prefix.encoding == encoding)
+                {
+                  source = QString(prefix.prefix) + source;
+                  break;
+                }
+              }
+
               ShaderToolOutput out =
                   tool.CompileShader(this, source, "main", ShaderStage::Pixel, "");
 

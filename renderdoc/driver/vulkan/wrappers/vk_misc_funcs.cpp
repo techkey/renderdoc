@@ -29,17 +29,16 @@ static void PatchSeparateStencil(VkAttachmentDescription &att, const VkAttachmen
 {
 }
 
-static void PatchSeparateStencil(VkAttachmentDescription2KHR &att,
-                                 const VkAttachmentReference2KHR *ref)
+static void PatchSeparateStencil(VkAttachmentDescription2 &att, const VkAttachmentReference2 *ref)
 {
   // VK_KHR_separate_depth_stencil_layouts
-  const VkAttachmentReferenceStencilLayoutKHR *separateStencilRef =
-      (const VkAttachmentReferenceStencilLayoutKHR *)FindNextStruct(
-          ref, VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_STENCIL_LAYOUT_KHR);
+  const VkAttachmentReferenceStencilLayout *separateStencilRef =
+      (const VkAttachmentReferenceStencilLayout *)FindNextStruct(
+          ref, VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_STENCIL_LAYOUT);
 
-  VkAttachmentDescriptionStencilLayoutKHR *separateStencilAtt =
-      (VkAttachmentDescriptionStencilLayoutKHR *)FindNextStruct(
-          &att, VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_STENCIL_LAYOUT_KHR);
+  VkAttachmentDescriptionStencilLayout *separateStencilAtt =
+      (VkAttachmentDescriptionStencilLayout *)FindNextStruct(
+          &att, VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_STENCIL_LAYOUT);
 
   if(separateStencilRef && separateStencilAtt)
   {
@@ -176,12 +175,56 @@ DESTROY_IMPL(VkFence, DestroyFence)
 DESTROY_IMPL(VkEvent, DestroyEvent)
 DESTROY_IMPL(VkCommandPool, DestroyCommandPool)
 DESTROY_IMPL(VkQueryPool, DestroyQueryPool)
-DESTROY_IMPL(VkFramebuffer, DestroyFramebuffer)
-DESTROY_IMPL(VkRenderPass, DestroyRenderPass)
 DESTROY_IMPL(VkDescriptorUpdateTemplate, DestroyDescriptorUpdateTemplate)
 DESTROY_IMPL(VkSamplerYcbcrConversion, DestroySamplerYcbcrConversion)
 
 #undef DESTROY_IMPL
+
+void WrappedVulkan::vkDestroyFramebuffer(VkDevice device, VkFramebuffer obj,
+                                         const VkAllocationCallbacks *pAllocator)
+{
+  if(obj == VK_NULL_HANDLE)
+    return;
+  VkFramebuffer unwrappedObj = Unwrap(obj);
+  m_ForcedReferences.removeOne(GetRecord(obj));
+  if(IsReplayMode(m_State))
+  {
+    const VulkanCreationInfo::Framebuffer &rpinfo = m_CreationInfo.m_Framebuffer[GetResID(obj)];
+
+    for(VkFramebuffer loadfb : rpinfo.loadFBs)
+    {
+      ObjDisp(device)->DestroyFramebuffer(Unwrap(device), Unwrap(loadfb), pAllocator);
+      GetResourceManager()->ReleaseWrappedResource(loadfb, true);
+    }
+
+    m_CreationInfo.erase(GetResID(obj));
+  }
+  GetResourceManager()->ReleaseWrappedResource(obj, true);
+  ObjDisp(device)->DestroyFramebuffer(Unwrap(device), unwrappedObj, pAllocator);
+}
+
+void WrappedVulkan::vkDestroyRenderPass(VkDevice device, VkRenderPass obj,
+                                        const VkAllocationCallbacks *pAllocator)
+{
+  if(obj == VK_NULL_HANDLE)
+    return;
+  VkRenderPass unwrappedObj = Unwrap(obj);
+  m_ForcedReferences.removeOne(GetRecord(obj));
+  if(IsReplayMode(m_State))
+  {
+    const VulkanCreationInfo::RenderPass &rpinfo = m_CreationInfo.m_RenderPass[GetResID(obj)];
+
+    for(VkRenderPass loadrp : rpinfo.loadRPs)
+    {
+      ObjDisp(device)->DestroyRenderPass(Unwrap(device), Unwrap(loadrp), pAllocator);
+      GetResourceManager()->ReleaseWrappedResource(loadrp, true);
+    }
+
+    m_CreationInfo.erase(GetResID(obj));
+  }
+  GetResourceManager()->ReleaseWrappedResource(obj, true);
+  ObjDisp(device)->DestroyRenderPass(Unwrap(device), unwrappedObj, pAllocator);
+}
 
 void WrappedVulkan::vkDestroyBuffer(VkDevice device, VkBuffer buffer,
                                     const VkAllocationCallbacks *pAllocator)
@@ -955,13 +998,13 @@ bool WrappedVulkan::Serialise_vkCreateRenderPass(SerialiserType &ser, VkDevice d
     VkAttachmentDescription *att = (VkAttachmentDescription *)CreateInfo.pAttachments;
     for(uint32_t i = 0; i < CreateInfo.attachmentCount; i++)
     {
+      if(att[i].storeOp != VK_ATTACHMENT_STORE_OP_NONE)
+        att[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+      if(att[i].stencilStoreOp != VK_ATTACHMENT_STORE_OP_NONE)
+        att[i].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+
       if(m_ReplayOptions.optimisation != ReplayOptimisationLevel::Fastest)
       {
-        if(att[i].storeOp != VK_ATTACHMENT_STORE_OP_NONE_EXT)
-          att[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        if(att[i].stencilStoreOp != VK_ATTACHMENT_STORE_OP_NONE_EXT)
-          att[i].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
-
         if(att[i].loadOp == VK_ATTACHMENT_LOAD_OP_DONT_CARE)
         {
           att[i].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -1213,9 +1256,9 @@ bool WrappedVulkan::Serialise_vkCreateRenderPass2(SerialiserType &ser, VkDevice 
     VkAttachmentDescription2 *att = (VkAttachmentDescription2 *)CreateInfo.pAttachments;
     for(uint32_t i = 0; i < CreateInfo.attachmentCount; i++)
     {
-      if(att[i].storeOp != VK_ATTACHMENT_STORE_OP_NONE_EXT)
+      if(att[i].storeOp != VK_ATTACHMENT_STORE_OP_NONE)
         att[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-      if(att[i].stencilStoreOp != VK_ATTACHMENT_STORE_OP_NONE_EXT)
+      if(att[i].stencilStoreOp != VK_ATTACHMENT_STORE_OP_NONE)
         att[i].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
 
       if(att[i].loadOp == VK_ATTACHMENT_LOAD_OP_DONT_CARE)
@@ -1228,9 +1271,9 @@ bool WrappedVulkan::Serialise_vkCreateRenderPass2(SerialiserType &ser, VkDevice 
       SanitiseNewImageLayout(att[i].finalLayout);
 
       // VK_KHR_separate_depth_stencil_layouts
-      VkAttachmentDescriptionStencilLayoutKHR *separateStencil =
-          (VkAttachmentDescriptionStencilLayoutKHR *)FindNextStruct(
-              &att[i], VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_STENCIL_LAYOUT_KHR);
+      VkAttachmentDescriptionStencilLayout *separateStencil =
+          (VkAttachmentDescriptionStencilLayout *)FindNextStruct(
+              &att[i], VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_STENCIL_LAYOUT);
 
       if(separateStencil)
       {
@@ -1953,7 +1996,7 @@ static ObjData GetObjData(VkObjectType objType, uint64_t object)
     }
 
     // private data slots are not wrapped
-    case VK_OBJECT_TYPE_PRIVATE_DATA_SLOT_EXT:
+    case VK_OBJECT_TYPE_PRIVATE_DATA_SLOT:
       ret.unwrapped = object;
       break;
 
@@ -2344,40 +2387,39 @@ void WrappedVulkan::vkReleaseProfilingLockKHR(VkDevice device)
   ObjDisp(device)->ReleaseProfilingLockKHR(Unwrap(device));
 }
 
-VkResult WrappedVulkan::vkCreatePrivateDataSlotEXT(VkDevice device,
-                                                   const VkPrivateDataSlotCreateInfoEXT *pCreateInfo,
-                                                   const VkAllocationCallbacks *pAllocator,
-                                                   VkPrivateDataSlotEXT *pPrivateDataSlot)
+VkResult WrappedVulkan::vkCreatePrivateDataSlot(VkDevice device,
+                                                const VkPrivateDataSlotCreateInfo *pCreateInfo,
+                                                const VkAllocationCallbacks *pAllocator,
+                                                VkPrivateDataSlot *pPrivateDataSlot)
 {
   // don't even wrap the slot, keep it unwrapped since we don't care about it
-  return ObjDisp(device)->CreatePrivateDataSlotEXT(Unwrap(device), pCreateInfo, pAllocator,
-                                                   pPrivateDataSlot);
+  return ObjDisp(device)->CreatePrivateDataSlot(Unwrap(device), pCreateInfo, pAllocator,
+                                                pPrivateDataSlot);
 }
 
-void WrappedVulkan::vkDestroyPrivateDataSlotEXT(VkDevice device, VkPrivateDataSlotEXT privateDataSlot,
-                                                const VkAllocationCallbacks *pAllocator)
+void WrappedVulkan::vkDestroyPrivateDataSlot(VkDevice device, VkPrivateDataSlot privateDataSlot,
+                                             const VkAllocationCallbacks *pAllocator)
 {
-  return ObjDisp(device)->DestroyPrivateDataSlotEXT(Unwrap(device), privateDataSlot, pAllocator);
+  return ObjDisp(device)->DestroyPrivateDataSlot(Unwrap(device), privateDataSlot, pAllocator);
 }
 
-VkResult WrappedVulkan::vkSetPrivateDataEXT(VkDevice device, VkObjectType objectType,
-                                            uint64_t objectHandle,
-                                            VkPrivateDataSlotEXT privateDataSlot, uint64_t data)
-{
-  ObjData objdata = GetObjData(objectType, objectHandle);
-
-  return ObjDisp(device)->SetPrivateDataEXT(Unwrap(device), objectType, objdata.unwrapped,
-                                            privateDataSlot, data);
-}
-
-void WrappedVulkan::vkGetPrivateDataEXT(VkDevice device, VkObjectType objectType,
-                                        uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot,
-                                        uint64_t *pData)
+VkResult WrappedVulkan::vkSetPrivateData(VkDevice device, VkObjectType objectType,
+                                         uint64_t objectHandle, VkPrivateDataSlot privateDataSlot,
+                                         uint64_t data)
 {
   ObjData objdata = GetObjData(objectType, objectHandle);
 
-  return ObjDisp(device)->GetPrivateDataEXT(Unwrap(device), objectType, objdata.unwrapped,
-                                            privateDataSlot, pData);
+  return ObjDisp(device)->SetPrivateData(Unwrap(device), objectType, objdata.unwrapped,
+                                         privateDataSlot, data);
+}
+
+void WrappedVulkan::vkGetPrivateData(VkDevice device, VkObjectType objectType, uint64_t objectHandle,
+                                     VkPrivateDataSlot privateDataSlot, uint64_t *pData)
+{
+  ObjData objdata = GetObjData(objectType, objectHandle);
+
+  return ObjDisp(device)->GetPrivateData(Unwrap(device), objectType, objdata.unwrapped,
+                                         privateDataSlot, pData);
 }
 
 INSTANTIATE_FUNCTION_SERIALISED(VkResult, vkCreateSampler, VkDevice device,

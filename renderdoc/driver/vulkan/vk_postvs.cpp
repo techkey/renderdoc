@@ -39,6 +39,18 @@ RDOC_EXTERN_CONFIG(bool, Vulkan_Debug_DisableBufferDeviceAddress);
 
 #undef None
 
+struct ScopedOOMHandleVk
+{
+  ScopedOOMHandleVk(WrappedVulkan *vk)
+  {
+    m_pDriver = vk;
+    m_pDriver->HandleOOM(true);
+  }
+
+  ~ScopedOOMHandleVk() { m_pDriver->HandleOOM(false); }
+  WrappedVulkan *m_pDriver;
+};
+
 struct VkXfbQueryResult
 {
   uint64_t numPrimitivesWritten;
@@ -1853,6 +1865,12 @@ void VulkanReplay::FetchVSOut(uint32_t eventId, VulkanRenderState &state)
     CheckVkResult(vkr);
     if(vkr != VK_SUCCESS)
       return;
+    if(!idxData)
+    {
+      RDCERR("Manually reporting failed memory map");
+      CheckVkResult(VK_ERROR_MEMORY_MAP_FAILED);
+      return;
+    }
 
     memcpy(idxData, &indices[0], indices.size() * sizeof(uint32_t));
 
@@ -1925,6 +1943,12 @@ void VulkanReplay::FetchVSOut(uint32_t eventId, VulkanRenderState &state)
     CheckVkResult(vkr);
     if(vkr != VK_SUCCESS)
       return;
+    if(!idxData)
+    {
+      RDCERR("Manually reporting failed memory map");
+      CheckVkResult(VK_ERROR_MEMORY_MAP_FAILED);
+      return;
+    }
 
     memcpy(idxData, idxdata.data(), idxdata.size());
 
@@ -2147,6 +2171,12 @@ void VulkanReplay::FetchVSOut(uint32_t eventId, VulkanRenderState &state)
         CheckVkResult(vkr);
         if(vkr != VK_SUCCESS)
           return;
+        if(!dst)
+        {
+          RDCERR("Manually reporting failed memory map");
+          CheckVkResult(VK_ERROR_MEMORY_MAP_FAILED);
+          return;
+        }
 
         const byte *dstBase = dst;
         (void)dstBase;
@@ -2653,6 +2683,12 @@ void VulkanReplay::FetchVSOut(uint32_t eventId, VulkanRenderState &state)
   CheckVkResult(vkr);
   if(vkr != VK_SUCCESS)
     return;
+  if(!byteData)
+  {
+    RDCERR("Manually reporting failed memory map");
+    CheckVkResult(VK_ERROR_MEMORY_MAP_FAILED);
+    return;
+  }
 
   VkMappedMemoryRange range = {
       VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, NULL, readbackMem, 0, VK_WHOLE_SIZE,
@@ -3349,6 +3385,9 @@ void VulkanReplay::InitPostVSBuffers(uint32_t eventId, VulkanRenderState state)
 
   if(m_PostVS.Data.find(eventId) != m_PostVS.Data.end())
     return;
+
+  // we handle out-of-memory errors while processing postvs, don't treat it as a fatal error
+  ScopedOOMHandleVk oom(m_pDriver);
 
   VulkanCreationInfo &creationInfo = m_pDriver->m_CreationInfo;
 

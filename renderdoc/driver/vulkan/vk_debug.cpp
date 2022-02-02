@@ -741,7 +741,10 @@ VulkanDebugManager::VulkanDebugManager(WrappedVulkan *driver)
 
       m_DiscardCB[i].Create(m_pDriver, m_Device, pattern.size(), 1, 0);
 
-      memcpy(m_DiscardCB[i].Map(), pattern.data(), pattern.size());
+      void *ptr = m_DiscardCB[i].Map();
+      if(!ptr)
+        return;
+      memcpy(ptr, pattern.data(), pattern.size());
       m_DiscardCB[i].Unmap();
 
       VkDescriptorBufferInfo bufInfo = {};
@@ -835,6 +838,7 @@ void VulkanDebugManager::CreateCustomShaderTex(uint32_t width, uint32_t height, 
     if(width == m_Custom.TexWidth && height == m_Custom.TexHeight)
     {
       // recreate framebuffer for this mip
+      m_pDriver->vkDestroyFramebuffer(dev, m_Custom.TexFB, NULL);
 
       // Create framebuffer rendering just to overlay image, no depth
       VkFramebufferCreateInfo fbinfo = {
@@ -1210,6 +1214,8 @@ uint32_t VulkanReplay::PickVertex(uint32_t eventId, int32_t width, int32_t heigh
 
     uint32_t *outidxs = (uint32_t *)m_VertexPick.IBUpload.Map();
     uint32_t *mappedPtr = outidxs;
+    if(!mappedPtr)
+      return ~0U;
 
     memset(outidxs, 0, m_VertexPick.IBSize);
 
@@ -1329,6 +1335,8 @@ uint32_t VulkanReplay::PickVertex(uint32_t eventId, int32_t width, int32_t heigh
     bool valid = true;
 
     FloatVector *vbData = (FloatVector *)m_VertexPick.VBUpload.Map();
+    if(!vbData)
+      return ~0U;
 
     // the index buffer may refer to vertices past the start of the vertex buffer, so we can't just
     // conver the first N vertices we'll need.
@@ -1342,6 +1350,8 @@ uint32_t VulkanReplay::PickVertex(uint32_t eventId, int32_t width, int32_t heigh
   }
 
   MeshPickUBOData *ubo = (MeshPickUBOData *)m_VertexPick.UBO.Map();
+  if(!ubo)
+    return ~0U;
 
   ubo->rayPos = rayPos;
   ubo->rayDir = rayDir;
@@ -1543,6 +1553,8 @@ uint32_t VulkanReplay::PickVertex(uint32_t eventId, int32_t width, int32_t heigh
 
   uint32_t *pickResultData = (uint32_t *)m_VertexPick.ResultReadback.Map();
   uint32_t numResults = *pickResultData;
+  if(!pickResultData)
+    return ~0U;
 
   uint32_t ret = ~0U;
 
@@ -1821,6 +1833,12 @@ void VulkanDebugManager::GetBufferData(ResourceId buff, uint64_t offset, uint64_
     CheckVkResult(vkr);
     if(vkr != VK_SUCCESS)
       return;
+    if(!pData)
+    {
+      RDCERR("Manually reporting failed memory map");
+      CheckVkResult(VK_ERROR_MEMORY_MAP_FAILED);
+      return;
+    }
 
     VkMappedMemoryRange range = {
         VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, NULL, Unwrap(m_ReadbackWindow.mem), 0, VK_WHOLE_SIZE,
@@ -2035,12 +2053,17 @@ void VulkanDebugManager::FillWithDiscardPattern(VkCommandBuffer cmd, DiscardType
 
     uint32_t pass = 0;
 
+    VkImageSubresourceRange barrierDiscardRange = discardRange;
+    barrierDiscardRange.aspectMask = imAspects;
+
     VkImageMemoryBarrier dstimBarrier = {
         VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL,
-        VK_ACCESS_ALL_READ_BITS | VK_ACCESS_ALL_WRITE_BITS, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_ALL_READ_BITS | VK_ACCESS_ALL_WRITE_BITS,
+        depth ? (VkAccessFlags)VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
+              : (VkAccessFlags)VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
         curLayout, depth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
                          : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, Unwrap(image), discardRange,
+        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, Unwrap(image), barrierDiscardRange,
     };
 
     DoPipelineBarrier(cmd, 1, &dstimBarrier);
@@ -2306,6 +2329,11 @@ void VulkanDebugManager::InitReadbackBuffer(VkDeviceSize sz)
     VkResult vkr = ObjDisp(dev)->MapMemory(Unwrap(dev), Unwrap(m_ReadbackWindow.mem), 0,
                                            VK_WHOLE_SIZE, 0, (void **)&m_ReadbackPtr);
     CheckVkResult(vkr);
+    if(!m_ReadbackPtr)
+    {
+      RDCERR("Manually reporting failed memory map");
+      CheckVkResult(VK_ERROR_MEMORY_MAP_FAILED);
+    }
   }
 }
 
@@ -2336,21 +2364,21 @@ void VulkanReplay::PatchReservedDescriptors(const VulkanStatePipeline &pipe,
         delete[] a;
       for(VkBufferView *a : bufViewWrites)
         delete[] a;
-      for(VkWriteDescriptorSetInlineUniformBlockEXT *a : inlineWrites)
+      for(VkWriteDescriptorSetInlineUniformBlock *a : inlineWrites)
         delete a;
     }
 
     rdcarray<VkDescriptorImageInfo *> imgWrites;
     rdcarray<VkDescriptorBufferInfo *> bufWrites;
     rdcarray<VkBufferView *> bufViewWrites;
-    rdcarray<VkWriteDescriptorSetInlineUniformBlockEXT *> inlineWrites;
+    rdcarray<VkWriteDescriptorSetInlineUniformBlock *> inlineWrites;
   } alloced;
 
   rdcarray<VkDescriptorImageInfo *> &allocImgWrites = alloced.imgWrites;
   rdcarray<VkDescriptorBufferInfo *> &allocBufWrites = alloced.bufWrites;
   rdcarray<VkBufferView *> &allocBufViewWrites = alloced.bufViewWrites;
 
-  rdcarray<VkWriteDescriptorSetInlineUniformBlockEXT *> &allocInlineWrites = alloced.inlineWrites;
+  rdcarray<VkWriteDescriptorSetInlineUniformBlock *> &allocInlineWrites = alloced.inlineWrites;
 
   // one for each descriptor type. 1 of each to start with, we then increment for each descriptor
   // we need to allocate
@@ -2366,11 +2394,11 @@ void VulkanReplay::PatchReservedDescriptors(const VulkanStatePipeline &pipe,
       {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1},
       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1},
       {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1},
-      {VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT, 0},
+      {VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK, 0},
   };
 
-  VkDescriptorPoolInlineUniformBlockCreateInfoEXT inlineCreateInfo = {
-      VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_INLINE_UNIFORM_BLOCK_CREATE_INFO_EXT,
+  VkDescriptorPoolInlineUniformBlockCreateInfo inlineCreateInfo = {
+      VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_INLINE_UNIFORM_BLOCK_CREATE_INFO,
   };
 
   static const uint32_t InlinePoolIndex = 11;
@@ -2480,8 +2508,8 @@ void VulkanReplay::PatchReservedDescriptors(const VulkanStatePipeline &pipe,
 
   if(m_pDriver->GetExtensions(NULL).ext_EXT_inline_uniform_block)
   {
-    VkPhysicalDeviceInlineUniformBlockPropertiesEXT inlineProps = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INLINE_UNIFORM_BLOCK_PROPERTIES_EXT,
+    VkPhysicalDeviceInlineUniformBlockProperties inlineProps = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INLINE_UNIFORM_BLOCK_PROPERTIES,
     };
 
     VkPhysicalDeviceProperties2 availBase = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
@@ -2570,7 +2598,7 @@ void VulkanReplay::PatchReservedDescriptors(const VulkanStatePipeline &pipe,
           descriptorCount = setInfo.data.variableDescriptorCount;
 
         // make room in the pool
-        if(bind.descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT)
+        if(bind.descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
         {
           poolSizes[InlinePoolIndex].descriptorCount += descriptorCount;
           inlineCreateInfo.maxInlineUniformBlockBindings++;
@@ -2648,7 +2676,7 @@ void VulkanReplay::PatchReservedDescriptors(const VulkanStatePipeline &pipe,
             UPDATE_AND_CHECK_LIMIT(maxDescriptorSetInputAttachments);
             UPDATE_AND_CHECK_STAGE_LIMIT(maxPerStageDescriptorInputAttachments);
             break;
-          case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT:
+          case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
             descriptorCount = 1;
             UPDATE_AND_CHECK_LIMIT(maxDescriptorSetInlineUniformBlocks);
             UPDATE_AND_CHECK_STAGE_LIMIT(maxPerStageDescriptorInlineUniformBlocks);
@@ -2825,11 +2853,11 @@ void VulkanReplay::PatchReservedDescriptors(const VulkanStatePipeline &pipe,
             allocBufWrites.push_back(out);
             break;
           }
-          case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT:
+          case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
           {
-            allocInlineWrites.push_back(new VkWriteDescriptorSetInlineUniformBlockEXT);
-            VkWriteDescriptorSetInlineUniformBlockEXT *inlineWrite = allocInlineWrites.back();
-            inlineWrite->sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK_EXT;
+            allocInlineWrites.push_back(new VkWriteDescriptorSetInlineUniformBlock);
+            VkWriteDescriptorSetInlineUniformBlock *inlineWrite = allocInlineWrites.back();
+            inlineWrite->sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK;
             inlineWrite->pNext = NULL;
             inlineWrite->dataSize = descriptorCount;
             inlineWrite->pData = setInfo.data.inlineBytes.data() + slot[0].inlineOffset;
@@ -2841,7 +2869,7 @@ void VulkanReplay::PatchReservedDescriptors(const VulkanStatePipeline &pipe,
 
         // skip validity check for inline uniform block as the descriptor count means something
         // different
-        if(write.descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT)
+        if(write.descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
         {
           write.descriptorCount = descriptorCount;
           descWrites.push_back(write);
@@ -3657,7 +3685,8 @@ void VulkanReplay::MeshRendering::Init(WrappedVulkan *driver, VkDescriptorPool d
 
   Vec4f *axisData = (Vec4f *)AxisFrustumVB.Map();
 
-  memcpy(axisData, axisFrustum, sizeof(axisFrustum));
+  if(axisData)
+    memcpy(axisData, axisFrustum, sizeof(axisFrustum));
 
   AxisFrustumVB.Unmap();
 

@@ -1642,6 +1642,15 @@ ToolWindowManager::AreaReference MainWindow::leftToolArea()
   return ToolWindowManager::AreaReference(ToolWindowManager::LastUsedArea);
 }
 
+void MainWindow::BringToFront()
+{
+  // un-minimise if necessary
+  setWindowState(windowState() & ~Qt::WindowMinimized);
+  show();
+  raise();
+  activateWindow();
+}
+
 void MainWindow::LoadInitialLayout()
 {
   bool loaded = LoadLayout(0);
@@ -1951,6 +1960,8 @@ void MainWindow::setRemoteHost(int hostIdx)
   if(hostIdx >= 0 && hostIdx < hosts.count())
     host = hosts[hostIdx];
 
+  bool noToAll = false;
+
   for(LiveCapture *live : m_LiveCaptures)
   {
     // allow live captures to this host to stay open, that way
@@ -1959,7 +1970,12 @@ void MainWindow::setRemoteHost(int hostIdx)
     if(host.IsValid() && live->hostname() == host.Hostname())
       continue;
 
-    if(!live->checkAllowClose())
+    // if the user previously selected 'no to all' in the save prompts below, apply that to all
+    // subsequent live captures
+    if(noToAll)
+      continue;
+
+    if(!live->checkAllowClose(m_LiveCaptures.count() > 1, noToAll))
       return;
   }
 
@@ -2937,9 +2953,16 @@ void MainWindow::loadLayout_triggered()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+  bool noToAll = false;
+
   for(LiveCapture *live : m_LiveCaptures)
   {
-    if(!live->checkAllowClose())
+    // if the user previously selected 'no to all' in the save prompts below, apply that to all
+    // subsequent live captures
+    if(noToAll)
+      continue;
+
+    if(!live->checkAllowClose(m_LiveCaptures.count() > 1, noToAll))
     {
       event->ignore();
       return;

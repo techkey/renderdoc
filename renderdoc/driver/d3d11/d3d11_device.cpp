@@ -2278,6 +2278,8 @@ bool WrappedID3D11Device::EndFrameCapture(void *dev, void *wnd)
         RDCERR("NULL deferred context in resource record!");
     }
 
+    m_DebugMessages.clear();
+
     GetResourceManager()->ClearReferencedResources();
 
     GetResourceManager()->FreeInitialContents();
@@ -2533,8 +2535,15 @@ void WrappedID3D11Device::CheckHRESULT(HRESULT hr)
   }
   else if(hr == E_OUTOFMEMORY)
   {
-    RDCLOG("Logging out of memory fatal error for %s", ToStr(hr).c_str());
-    m_FatalError = ReplayStatus::ReplayOutOfMemory;
+    if(m_OOMHandler)
+    {
+      RDCLOG("Ignoring out of memory error that will be handled");
+    }
+    else
+    {
+      RDCLOG("Logging out of memory fatal error for %s", ToStr(hr).c_str());
+      m_FatalError = ReplayStatus::ReplayOutOfMemory;
+    }
   }
   else
   {

@@ -858,6 +858,12 @@ bool WrappedVulkan::Serialise_vkUnmapMemory(SerialiserType &ser, VkDevice device
       RDCERR("Error mapping memory on replay: %s", ToStr(vkr).c_str());
       return false;
     }
+    if(!MapData)
+    {
+      RDCERR("Manually reporting failed memory map");
+      CheckVkResult(VK_ERROR_MEMORY_MAP_FAILED);
+      return false;
+    }
 
     const Intervals<VulkanCreationInfo::Memory::MemoryBinding> &bindings =
         m_CreationInfo.m_Memory[GetResID(memory)].bindings;
@@ -1059,8 +1065,15 @@ bool WrappedVulkan::Serialise_vkFlushMappedMemoryRanges(SerialiserType &ser, VkD
     VkResult ret =
         ObjDisp(device)->MapMemory(Unwrap(device), Unwrap(MemRange.memory), MemRange.offset,
                                    MemRange.size, 0, (void **)&MappedData);
+    CheckVkResult(ret);
     if(ret != VK_SUCCESS)
       RDCERR("Error mapping memory on replay: %s", ToStr(ret).c_str());
+    if(!MappedData)
+    {
+      RDCERR("Manually reporting failed memory map");
+      CheckVkResult(VK_ERROR_MEMORY_MAP_FAILED);
+      return false;
+    }
 
     const VulkanCreationInfo::Memory &memInfo = m_CreationInfo.m_Memory[GetResID(MemRange.memory)];
     const Intervals<VulkanCreationInfo::Memory::MemoryBinding> &bindings = memInfo.bindings;
@@ -1379,8 +1392,7 @@ VkResult WrappedVulkan::vkBindBufferMemory(VkDevice device, VkBuffer buffer, VkD
     {
       // in case we're currently capturing, immediately consider the buffer and backing memory as
       // read-before-write referenced
-      GetResourceManager()->MarkResourceFrameReferenced(record->GetResourceID(),
-                                                        eFrameRef_ReadBeforeWrite);
+      GetResourceManager()->MarkResourceFrameReferenced(record->GetResourceID(), eFrameRef_Read);
       GetResourceManager()->MarkMemoryFrameReferenced(id, memoryOffset, record->memSize,
                                                       eFrameRef_ReadBeforeWrite);
 
@@ -1768,7 +1780,7 @@ VkResult WrappedVulkan::vkCreateBuffer(VkDevice device, const VkBufferCreateInfo
 
               record->resInfo->memreqs.size = RDCMAX(record->resInfo->memreqs.size, mrq.size);
               record->resInfo->memreqs.alignment =
-                  RDCMAX(record->resInfo->memreqs.size, mrq.alignment);
+                  RDCMAX(record->resInfo->memreqs.alignment, mrq.alignment);
               if((record->resInfo->memreqs.memoryTypeBits & mrq.memoryTypeBits) == 0)
               {
                 RDCWARN(
@@ -2098,7 +2110,17 @@ bool WrappedVulkan::Serialise_vkCreateImage(SerialiserType &ser, VkDevice device
         state->isMemoryBound = true;
     }
 
-    const char *prefix = "Image";
+    rdcstr prefix = "Image";
+    rdcstr depth = "Depth";
+
+    if(CreateInfo.format == VK_FORMAT_S8_UINT)
+    {
+      depth = "Stencil";
+    }
+    else if(IsStencilFormat(CreateInfo.format))
+    {
+      depth = "Depth/Stencil";
+    }
 
     if(CreateInfo.imageType == VK_IMAGE_TYPE_1D)
     {
@@ -2107,7 +2129,7 @@ bool WrappedVulkan::Serialise_vkCreateImage(SerialiserType &ser, VkDevice device
       if(CreateInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
         prefix = "1D Color Attachment";
       else if(CreateInfo.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-        prefix = "1D Depth Attachment";
+        prefix = "1D " + depth + " Attachment";
     }
     else if(CreateInfo.imageType == VK_IMAGE_TYPE_2D)
     {
@@ -2116,7 +2138,7 @@ bool WrappedVulkan::Serialise_vkCreateImage(SerialiserType &ser, VkDevice device
       if(CreateInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
         prefix = "2D Color Attachment";
       else if(CreateInfo.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-        prefix = "2D Depth Attachment";
+        prefix = "2D " + depth + " Attachment";
       else if(CreateInfo.usage & VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT)
         prefix = "2D Fragment Density Map Attachment";
     }
@@ -2127,10 +2149,10 @@ bool WrappedVulkan::Serialise_vkCreateImage(SerialiserType &ser, VkDevice device
       if(CreateInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
         prefix = "3D Color Attachment";
       else if(CreateInfo.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-        prefix = "3D Depth Attachment";
+        prefix = "3D " + depth + " Attachment";
     }
 
-    AddResource(Image, ResourceType::Texture, prefix);
+    AddResource(Image, ResourceType::Texture, prefix.c_str());
     DerivedResource(device, Image);
   }
 
@@ -2375,7 +2397,7 @@ VkResult WrappedVulkan::vkCreateImage(VkDevice device, const VkImageCreateInfo *
                   mrq.size, mrq.alignment, mrq.memoryTypeBits);
 
               resInfo.memreqs.size = RDCMAX(resInfo.memreqs.size, mrq.size);
-              resInfo.memreqs.alignment = RDCMAX(resInfo.memreqs.size, mrq.alignment);
+              resInfo.memreqs.alignment = RDCMAX(resInfo.memreqs.alignment, mrq.alignment);
 
               if((resInfo.memreqs.memoryTypeBits & mrq.memoryTypeBits) == 0)
               {
@@ -2659,6 +2681,28 @@ bool WrappedVulkan::Serialise_vkBindBufferMemory2(SerialiserType &ser, VkDevice 
 
   if(IsReplayingAndReading())
   {
+    rdcarray<VkMemoryRequirements> mrqs;
+    mrqs.resize(bindInfoCount);
+    for(uint32_t i = 0; i < bindInfoCount; i++)
+    {
+      const VkBindBufferMemoryInfo &bindInfo = pBindInfos[i];
+      const VulkanCreationInfo::Buffer &bufInfo = m_CreationInfo.m_Buffer[GetResID(bindInfo.buffer)];
+
+      ResourceId resOrigId = GetResourceManager()->GetOriginalID(GetResID(bindInfo.buffer));
+
+      ObjDisp(device)->GetBufferMemoryRequirements(Unwrap(device), Unwrap(bindInfo.buffer), &mrqs[i]);
+
+      bool ok =
+          CheckMemoryRequirements(("Buffer " + ToStr(resOrigId)).c_str(), GetResID(bindInfo.memory),
+                                  bindInfo.memoryOffset, mrqs[i], bufInfo.external);
+
+      if(!ok)
+        return false;
+    }
+
+    VkBindBufferMemoryInfo *unwrapped = UnwrapInfos(pBindInfos, bindInfoCount);
+    ObjDisp(device)->BindBufferMemory2(Unwrap(device), bindInfoCount, unwrapped);
+
     for(uint32_t i = 0; i < bindInfoCount; i++)
     {
       const VkBindBufferMemoryInfo &bindInfo = pBindInfos[i];
@@ -2667,16 +2711,6 @@ bool WrappedVulkan::Serialise_vkBindBufferMemory2(SerialiserType &ser, VkDevice 
       ResourceId memOrigId = GetResourceManager()->GetOriginalID(GetResID(bindInfo.memory));
 
       VulkanCreationInfo::Buffer &bufInfo = m_CreationInfo.m_Buffer[GetResID(bindInfo.buffer)];
-
-      VkMemoryRequirements mrq = {};
-      ObjDisp(device)->GetBufferMemoryRequirements(Unwrap(device), Unwrap(bindInfo.buffer), &mrq);
-
-      bool ok =
-          CheckMemoryRequirements(("Buffer " + ToStr(resOrigId)).c_str(), GetResID(bindInfo.memory),
-                                  bindInfo.memoryOffset, mrq, bufInfo.external);
-
-      if(!ok)
-        return false;
 
       GetResourceDesc(memOrigId).derivedResources.push_back(resOrigId);
       GetResourceDesc(resOrigId).parentResources.push_back(memOrigId);
@@ -2706,11 +2740,8 @@ bool WrappedVulkan::Serialise_vkBindBufferMemory2(SerialiserType &ser, VkDevice 
       GetResourceManager()->MarkDirtyResource(GetResID(bindInfo.memory));
 
       m_CreationInfo.m_Memory[GetResID(bindInfo.memory)].BindMemory(
-          bindInfo.memoryOffset, mrq.size, VulkanCreationInfo::Memory::Linear);
+          bindInfo.memoryOffset, mrqs[i].size, VulkanCreationInfo::Memory::Linear);
     }
-
-    VkBindBufferMemoryInfo *unwrapped = UnwrapInfos(pBindInfos, bindInfoCount);
-    ObjDisp(device)->BindBufferMemory2(Unwrap(device), bindInfoCount, unwrapped);
   }
 
   return true;
@@ -2763,8 +2794,7 @@ VkResult WrappedVulkan::vkBindBufferMemory2(VkDevice device, uint32_t bindInfoCo
       {
         // in case we're currently capturing, immediately consider the buffer and backing memory as
         // read-before-write referenced
-        GetResourceManager()->MarkResourceFrameReferenced(bufrecord->GetResourceID(),
-                                                          eFrameRef_ReadBeforeWrite);
+        GetResourceManager()->MarkResourceFrameReferenced(bufrecord->GetResourceID(), eFrameRef_Read);
         GetResourceManager()->MarkMemoryFrameReferenced(
             GetResID(pBindInfos[i].memory), pBindInfos[i].memoryOffset, bufrecord->memSize,
             eFrameRef_ReadBeforeWrite);

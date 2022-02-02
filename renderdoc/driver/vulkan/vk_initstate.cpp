@@ -1041,8 +1041,7 @@ bool WrappedVulkan::Serialise_InitialState(SerialiserType &ser, ResourceId id, V
 
       if(layout.inlineCount > 0)
       {
-        initialContents.inlineInfo =
-            new VkWriteDescriptorSetInlineUniformBlockEXT[layout.inlineCount];
+        initialContents.inlineInfo = new VkWriteDescriptorSetInlineUniformBlock[layout.inlineCount];
         initialContents.inlineData = AllocAlignedBuffer(InlineData.size());
         RDCASSERTEQUAL(layout.inlineByteSize, InlineData.size());
         memcpy(initialContents.inlineData, InlineData.data(), InlineData.size());
@@ -1058,7 +1057,7 @@ bool WrappedVulkan::Serialise_InitialState(SerialiserType &ser, ResourceId id, V
 
       VkWriteDescriptorSet *writes = initialContents.descriptorWrites;
       VkDescriptorBufferInfo *dstData = initialContents.descriptorInfo;
-      VkWriteDescriptorSetInlineUniformBlockEXT *dstInline = initialContents.inlineInfo;
+      VkWriteDescriptorSetInlineUniformBlock *dstInline = initialContents.inlineInfo;
       DescriptorSetSlot *srcData = Bindings;
 
       byte *srcInlineData = initialContents.inlineData;
@@ -1079,7 +1078,7 @@ bool WrappedVulkan::Serialise_InitialState(SerialiserType &ser, ResourceId id, V
 
         uint32_t inlineSize = 0;
 
-        if(layout.bindings[j].descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT)
+        if(layout.bindings[j].descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
         {
           inlineSize = descriptorCount;
           descriptorCount = 1;
@@ -1130,12 +1129,12 @@ bool WrappedVulkan::Serialise_InitialState(SerialiserType &ser, ResourceId id, V
         // For the array case we batch up updates as much as possible, iterating along the array and
         // skipping any invalid descriptors.
 
-        if(writes[bind].descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT)
+        if(writes[bind].descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
         {
           // handle inline uniform block specially because the descriptorCount doesn't mean what it
           // normally means in the write.
 
-          dstInline->sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK_EXT;
+          dstInline->sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK;
           dstInline->pNext = NULL;
           dstInline->pData = srcInlineData + src->inlineOffset;
           dstInline->dataSize = inlineSize;
@@ -1510,6 +1509,13 @@ bool WrappedVulkan::Serialise_InitialState(SerialiserType &ser, ResourceId id, V
                                   (void **)&Contents);
       CheckVkResult(vkr);
 
+      if(!Contents)
+      {
+        RDCERR("Manually reporting failed memory map");
+        CheckVkResult(VK_ERROR_MEMORY_MAP_FAILED);
+        return false;
+      }
+
       if(vkr != VK_SUCCESS)
         return false;
     }
@@ -1849,11 +1855,11 @@ void WrappedVulkan::Apply_InitialState(WrappedVkRes *live, const VkInitialConten
 
       DescriptorSetSlot *bind = bindings[writes[i].dstBinding];
 
-      if(writes[i].descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT)
+      if(writes[i].descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
       {
-        VkWriteDescriptorSetInlineUniformBlockEXT *inlineWrite =
-            (VkWriteDescriptorSetInlineUniformBlockEXT *)FindNextStruct(
-                &writes[i], VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK_EXT);
+        VkWriteDescriptorSetInlineUniformBlock *inlineWrite =
+            (VkWriteDescriptorSetInlineUniformBlock *)FindNextStruct(
+                &writes[i], VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK);
         memcpy(inlineData.data() + bind->inlineOffset + writes[i].dstArrayElement,
                inlineWrite->pData, inlineWrite->dataSize);
         continue;
@@ -1989,8 +1995,9 @@ void WrappedVulkan::Apply_InitialState(WrappedVkRes *live, const VkInitialConten
 
         ImageBarrierSequence setupBarriers;
         state->DiscardContents();
-        state->Transition(m_QueueFamilyIdx, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
-                          VK_ACCESS_TRANSFER_WRITE_BIT, setupBarriers, GetImageTransitionInfo());
+        state->Transition(m_QueueFamilyIdx, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                          VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, setupBarriers,
+                          GetImageTransitionInfo());
         InlineSetupImageBarriers(cmd, setupBarriers);
         m_setupImageBarriers.Merge(setupBarriers);
 
@@ -2020,8 +2027,9 @@ void WrappedVulkan::Apply_InitialState(WrappedVkRes *live, const VkInitialConten
 
         ImageBarrierSequence setupBarriers;    // , cleanupBarriers;
         state->DiscardContents();
-        state->Transition(m_QueueFamilyIdx, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
-                          VK_ACCESS_TRANSFER_WRITE_BIT, setupBarriers, GetImageTransitionInfo());
+        state->Transition(m_QueueFamilyIdx, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                          VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, setupBarriers,
+                          GetImageTransitionInfo());
         InlineSetupImageBarriers(cmd, setupBarriers);
         m_setupImageBarriers.Merge(setupBarriers);
 
@@ -2068,7 +2076,8 @@ void WrappedVulkan::Apply_InitialState(WrappedVkRes *live, const VkInitialConten
 
       ImageBarrierSequence setupBarriers;    // , cleanupBarriers;
       state->DiscardContents();
-      state->Transition(m_QueueFamilyIdx, VK_IMAGE_LAYOUT_GENERAL, 0,
+      state->Transition(m_QueueFamilyIdx, VK_IMAGE_LAYOUT_GENERAL,
+                        VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
                         VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
                         setupBarriers, GetImageTransitionInfo());
       InlineSetupImageBarriers(cmd, setupBarriers);
@@ -2281,8 +2290,9 @@ void WrappedVulkan::Apply_InitialState(WrappedVkRes *live, const VkInitialConten
       VkMarkerRegion::Begin(StringFormat::Fmt("Initial state for %s", ToStr(orig).c_str()), cmd);
 
       ImageBarrierSequence setupBarriers;
-      state->Transition(m_QueueFamilyIdx, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
-                        VK_ACCESS_TRANSFER_WRITE_BIT, setupBarriers, GetImageTransitionInfo());
+      state->Transition(m_QueueFamilyIdx, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, setupBarriers,
+                        GetImageTransitionInfo());
       InlineSetupImageBarriers(cmd, setupBarriers);
       m_setupImageBarriers.Merge(setupBarriers);
 

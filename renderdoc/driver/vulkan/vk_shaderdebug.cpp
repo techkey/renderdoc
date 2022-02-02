@@ -274,7 +274,7 @@ public:
               }
               break;
             }
-            case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT:
+            case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
             {
               // push directly into the buffer cache from the inline data
               BindpointIndex idx;
@@ -1363,6 +1363,8 @@ public:
                                        NULL);
 
     void *constants = m_DebugData.ConstantsBuffer.Map(NULL, 0);
+    if(!constants)
+      return false;
 
     memcpy(constants, &uniformParams, sizeof(uniformParams));
 
@@ -1440,6 +1442,8 @@ public:
     }
 
     float *ret = (float *)m_DebugData.ReadbackBuffer.Map(NULL, 0);
+    if(!ret)
+      return false;
 
     // convert float results, we did all sampling at 32-bit precision
     if(output.type == VarType::Half)
@@ -1573,6 +1577,8 @@ public:
     }
 
     byte *ret = (byte *)m_DebugData.ReadbackBuffer.Map(NULL, 0);
+    if(!ret)
+      return false;
 
     // these two operations change the type of the output
     if(op == rdcspv::GLSLstd450::Length || op == rdcspv::GLSLstd450::Distance)
@@ -3499,7 +3505,7 @@ static void CreatePSInputFetcher(rdcarray<uint32_t> &fragspv, uint32_t &structSt
     editor.AddDecoration(rdcspv::OpDecorate(bufBase, rdcspv::Decoration::Block));
   }
 
-  if(editor.EntryPointAllGlobals())
+  if(editor.EntryPointAllGlobals() && ssboVar != rdcspv::Id())
     addedInputs.push_back(ssboVar);
 
   // add our inputs to the entry point's ID list. Since we're expanding the list we have to copy,

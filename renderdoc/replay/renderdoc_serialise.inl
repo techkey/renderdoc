@@ -1049,8 +1049,9 @@ void DoSerialise(SerialiserType &ser, ShaderPixelMessageLocation &el)
   SERIALISE_MEMBER(y);
   SERIALISE_MEMBER(sample);
   SERIALISE_MEMBER(primitive);
+  SERIALISE_MEMBER(view);
 
-  SIZE_CHECK(16);
+  SIZE_CHECK(20);
 }
 
 template <typename SerialiserType>
@@ -1068,7 +1069,7 @@ void DoSerialise(SerialiserType &ser, ShaderMessage &el)
   SERIALISE_MEMBER(location);
   SERIALISE_MEMBER(message);
 
-  SIZE_CHECK(52);
+  SIZE_CHECK(56);
 }
 
 #pragma endregion
@@ -2325,6 +2326,8 @@ void DoSerialise(SerialiserType &ser, VKPipe::State &el)
 
   SERIALISE_MEMBER(images);
 
+  SERIALISE_MEMBER(shaderMessages);
+
   SERIALISE_MEMBER(conditionalRendering);
 
   SIZE_CHECK(2008);
@@ -2345,6 +2348,7 @@ INSTANTIATE_SERIALISE_TYPE(ShaderConstantType)
 INSTANTIATE_SERIALISE_TYPE(ShaderConstant)
 INSTANTIATE_SERIALISE_TYPE(ConstantBlock)
 INSTANTIATE_SERIALISE_TYPE(ShaderSampler)
+INSTANTIATE_SERIALISE_TYPE(ShaderMessage);
 INSTANTIATE_SERIALISE_TYPE(ShaderResource)
 INSTANTIATE_SERIALISE_TYPE(ShaderEntryPoint)
 INSTANTIATE_SERIALISE_TYPE(ShaderCompileFlags)
