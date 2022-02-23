@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -141,10 +141,11 @@ void VulkanRenderState::BeginRenderPassAndApplyState(WrappedVulkan *vk, VkComman
       imagelessAttachments.pAttachments = imagelessViews.data();
     }
 
-    ObjDisp(cmd)->CmdBeginRenderPass(Unwrap(cmd), &rpbegin, VK_SUBPASS_CONTENTS_INLINE);
+    ObjDisp(cmd)->CmdBeginRenderPass(Unwrap(cmd), &rpbegin, subpassContents);
   }
 
-  BindPipeline(vk, cmd, binding, true);
+  if(subpassContents != VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS)
+    BindPipeline(vk, cmd, binding, true);
 
   if(IsConditionalRenderingEnabled())
   {
@@ -423,6 +424,13 @@ void VulkanRenderState::BindPipeline(WrappedVulkan *vk, VkCommandBuffer cmd,
     if(stippleFactor && dynamicStates[VkDynamicLineStippleEXT])
       ObjDisp(cmd)->CmdSetLineStippleEXT(Unwrap(cmd), stippleFactor, stipplePattern);
 
+    if(vk->FragmentShadingRate())
+    {
+      if(dynamicStates[VkDynamicShadingRateKHR])
+        ObjDisp(cmd)->CmdSetFragmentShadingRateKHR(Unwrap(cmd), &pipelineShadingRate,
+                                                   shadingRateCombiners);
+    }
+
     if(graphics.pipeline != ResourceId())
       BindDescriptorSets(vk, cmd, graphics, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
@@ -525,7 +533,7 @@ void VulkanRenderState::BindPipeline(WrappedVulkan *vk, VkCommandBuffer cmd,
 
     // only set push constant ranges that the layout uses
     for(size_t i = 0; i < pushRanges.size(); i++)
-      ObjDisp(cmd)->CmdPushConstants(Unwrap(cmd), Unwrap(layout), VK_SHADER_STAGE_COMPUTE_BIT,
+      ObjDisp(cmd)->CmdPushConstants(Unwrap(cmd), Unwrap(layout), pushRanges[i].stageFlags,
                                      pushRanges[i].offset, pushRanges[i].size,
                                      pushconsts + pushRanges[i].offset);
 

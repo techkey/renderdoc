@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  * Copyright (c) 2014 Crytek
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -1454,7 +1454,7 @@ void ReplayProxy::Proxied_ReplaceResource(ParamSerialiser &paramser, ReturnSeria
   }
 
   if(paramser.IsWriting())
-    m_LiveIDs.erase(from);
+    m_LiveIDs.clear();
 
   SERIALISE_RETURN_VOID();
 }
@@ -1484,7 +1484,7 @@ void ReplayProxy::Proxied_RemoveReplacement(ParamSerialiser &paramser, ReturnSer
   }
 
   if(paramser.IsWriting())
-    m_LiveIDs.erase(id);
+    m_LiveIDs.clear();
 
   SERIALISE_RETURN_VOID();
 }
@@ -2447,11 +2447,14 @@ void ReplayProxy::EnsureTexCached(ResourceId &texid, CompType &typeCast, const S
     }
 
     const ProxyTextureProperties &proxy = proxyit->second;
+    const bool allSamples = sub.sample == ~0U;
 
-    for(uint32_t sample = 0; sample < proxy.msSamp; sample++)
+    uint32_t numSamplesToFetch = allSamples ? proxy.msSamp : 1;
+    for(uint32_t sample = 0; sample < numSamplesToFetch; sample++)
     {
       Subresource s = sub;
-      s.sample = sample;
+      if(allSamples)
+        s.sample = sample;
 
       TextureCacheEntry sampleArrayEntry = {texid, s};
 

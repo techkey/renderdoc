@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -476,6 +476,8 @@ VulkanDebugManager::VulkanDebugManager(WrappedVulkan *driver)
     vkr = driver->vkCreateImage(driver->GetDev(), &imInfo, NULL, &m_DummyStencilImage[0]);
     CheckVkResult(vkr);
 
+    NameVulkanObject(m_DummyStencilImage[0], "m_DummyStencilImage[0]");
+
     rm->SetInternalResource(GetResID(m_DummyStencilImage[0]));
 
     imInfo.samples = VK_SAMPLE_COUNT_2_BIT;
@@ -498,6 +500,8 @@ VulkanDebugManager::VulkanDebugManager(WrappedVulkan *driver)
 
     vkr = driver->vkCreateImage(driver->GetDev(), &imInfo, NULL, &m_DummyStencilImage[1]);
     CheckVkResult(vkr);
+
+    NameVulkanObject(m_DummyStencilImage[1], "m_DummyStencilImage[1]");
 
     rm->SetInternalResource(GetResID(m_DummyStencilImage[1]));
 
@@ -550,12 +554,16 @@ VulkanDebugManager::VulkanDebugManager(WrappedVulkan *driver)
     vkr = driver->vkCreateImageView(driver->GetDev(), &viewInfo, NULL, &m_DummyStencilView[0]);
     CheckVkResult(vkr);
 
+    NameVulkanObject(m_DummyStencilView[0], "m_DummyStencilView[0]");
+
     rm->SetInternalResource(GetResID(m_DummyStencilView[0]));
 
     viewInfo.image = m_DummyStencilImage[1];
 
     vkr = driver->vkCreateImageView(driver->GetDev(), &viewInfo, NULL, &m_DummyStencilView[1]);
     CheckVkResult(vkr);
+
+    NameVulkanObject(m_DummyStencilView[0], "m_DummyStencilView[1]");
 
     rm->SetInternalResource(GetResID(m_DummyStencilView[1]));
 
@@ -816,6 +824,8 @@ VulkanDebugManager::~VulkanDebugManager()
 
   for(auto it = m_DiscardPatterns.begin(); it != m_DiscardPatterns.end(); it++)
     m_pDriver->vkDestroyBuffer(dev, it->second, NULL);
+  for(auto it = m_DiscardStage.begin(); it != m_DiscardStage.end(); it++)
+    it->second.Destroy();
 
   for(size_t i = 0; i < ARRAY_COUNT(m_DepthMS2ArrayPipe); i++)
     m_pDriver->vkDestroyPipeline(dev, m_DepthMS2ArrayPipe[i], NULL);
@@ -891,6 +901,8 @@ void VulkanDebugManager::CreateCustomShaderTex(uint32_t width, uint32_t height, 
   vkr = m_pDriver->vkCreateImage(m_Device, &imInfo, NULL, &m_Custom.TexImg);
   CheckVkResult(vkr);
 
+  NameVulkanObject(m_Custom.TexImg, "m_Custom.TexImg");
+
   VkMemoryRequirements mrq = {0};
   m_pDriver->vkGetImageMemoryRequirements(m_Device, m_Custom.TexImg, &mrq);
 
@@ -937,6 +949,8 @@ void VulkanDebugManager::CreateCustomShaderTex(uint32_t width, uint32_t height, 
     viewInfo.subresourceRange.baseMipLevel = i;
     vkr = m_pDriver->vkCreateImageView(m_Device, &viewInfo, NULL, &m_Custom.TexImgView[i]);
     CheckVkResult(vkr);
+
+    NameVulkanObject(m_Custom.TexImgView[i], "m_Custom.TexImgView[" + ToStr(i) + "]");
   }
 
   // need to update image layout into valid state
@@ -1305,6 +1319,17 @@ uint32_t VulkanReplay::PickVertex(uint32_t eventId, int32_t width, int32_t heigh
 
     m_VertexPick.IBUpload.Unmap();
   }
+  else
+  {
+    // ensure IB is non-empty so we have a valid descriptor below
+    if(m_VertexPick.IBSize == 0)
+    {
+      m_VertexPick.IBSize = 1 * sizeof(uint32_t);
+
+      m_VertexPick.IB.Create(m_pDriver, dev, m_VertexPick.IBSize, 1,
+                             GPUBuffer::eGPUBufferGPULocal | GPUBuffer::eGPUBufferSSBO);
+    }
+  }
 
   // unpack and linearise the data
   {
@@ -1443,10 +1468,7 @@ uint32_t VulkanReplay::PickVertex(uint32_t eventId, int32_t width, int32_t heigh
        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, NULL, &ibInfo, NULL},
   };
 
-  if(!idxs.empty())
-    vt->UpdateDescriptorSets(Unwrap(m_Device), 2, writes, 0, NULL);
-  else
-    vt->UpdateDescriptorSets(Unwrap(m_Device), 1, writes, 0, NULL);
+  vt->UpdateDescriptorSets(Unwrap(m_Device), 2, writes, 0, NULL);
 
   VkCommandBuffer cmd = m_pDriver->GetNextCmd();
 
@@ -1702,6 +1724,12 @@ void VulkanDebugManager::GetBufferData(ResourceId buff, uint64_t offset, uint64_
 {
   VkDevice dev = m_pDriver->GetDev();
   const VkDevDispatchTable *vt = ObjDisp(dev);
+
+  if(!m_pDriver->GetResourceManager()->HasCurrentResource(buff))
+  {
+    RDCERR("Getting buffer data for unknown buffer/memory %s!", ToStr(buff).c_str());
+    return;
+  }
 
   WrappedVkRes *res = m_pDriver->GetResourceManager()->GetCurrentResource(buff);
 
@@ -1999,6 +2027,8 @@ void VulkanDebugManager::FillWithDiscardPattern(VkCommandBuffer cmd, DiscardType
           VkImageView view;
           VkResult vkr = driver->vkCreateImageView(driver->GetDev(), &viewInfo, NULL, &view);
           CheckVkResult(vkr);
+          NameVulkanObject(view, StringFormat::Fmt("FillWithDiscardPattern view %s",
+                                                   ToStr(GetResID(image)).c_str()));
 
           imgdata.views.push_back(view);
 
@@ -2119,37 +2149,6 @@ void VulkanDebugManager::FillWithDiscardPattern(VkCommandBuffer cmd, DiscardType
 
     DoPipelineBarrier(cmd, 1, &dstimBarrier);
 
-    /*
-    for(UINT sub = 0; sub < region->NumSubresources; sub++)
-    {
-      UINT subresource = region->FirstSubresource + sub;
-      if(depth)
-      {
-        dsvDesc.Texture2DMSArray.FirstArraySlice = GetSliceForSubresource(res, subresource);
-        m_pDevice->CreateDepthStencilView(res, &dsvDesc, dsv);
-        cmd->OMSetRenderTargets(0, NULL, FALSE, &dsv);
-      }
-      else
-      {
-        rtvDesc.Texture2DMSArray.FirstArraySlice = GetSliceForSubresource(res, subresource);
-        m_pDevice->CreateRenderTargetView(res, &rtvDesc, rtv);
-        cmd->OMSetRenderTargets(1, &rtv, FALSE, NULL);
-      }
-
-      UINT mip = GetMipForSubresource(res, subresource);
-      UINT plane = GetPlaneForSubresource(res, subresource);
-
-      for(D3D12_RECT r : rects)
-      {
-        r.right = RDCMIN(LONG(RDCMAX(1U, (UINT)desc.Width >> mip)), r.right);
-        r.bottom = RDCMIN(LONG(RDCMAX(1U, (UINT)desc.Height >> mip)), r.bottom);
-
-        cmd->RSSetScissorRects(1, &r);
-
-      }
-    }
-    */
-
     m_pDriver->GetCmdRenderState().BindPipeline(m_pDriver, cmd, VulkanRenderState::BindGraphics,
                                                 false);
 
@@ -2164,15 +2163,33 @@ void VulkanDebugManager::FillWithDiscardPattern(VkCommandBuffer cmd, DiscardType
   VkBuffer buf = m_DiscardPatterns[key];
   VkResult vkr = VK_SUCCESS;
 
+  static const uint32_t PatternBatchWidth = 256;
+  static const uint32_t PatternBatchHeight = 256;
+
+  VkImageAspectFlags aspectFlags = discardRange.aspectMask & FormatImageAspects(imInfo.format);
+
   if(buf == VK_NULL_HANDLE)
   {
+    GPUBuffer &stage = m_DiscardStage[key];
     bytebuf pattern = GetDiscardPattern(key.second, MakeResourceFormat(key.first));
 
+    BlockShape shape = GetBlockShape(key.first, 0);
+
+    if(key.first == VK_FORMAT_D32_SFLOAT_S8_UINT)
+      shape = {1, 1, 4};
+
+    stage.Create(m_pDriver, m_Device, pattern.size(), 1, 0);
+
+    void *ptr = stage.Map();
+    if(!ptr)
+      return;
+    memcpy(ptr, pattern.data(), pattern.size());
+    stage.Unmap();
+
     VkBufferCreateInfo bufInfo = {
-        VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        NULL,
-        0,
-        pattern.size(),
+        VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0,
+        pattern.size() * (PatternBatchWidth / DiscardPatternWidth) *
+            (PatternBatchHeight / DiscardPatternHeight),
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
     };
 
@@ -2188,7 +2205,45 @@ void VulkanDebugManager::FillWithDiscardPattern(VkCommandBuffer cmd, DiscardType
     vkr = vt->BindBufferMemory(Unwrap(dev), Unwrap(buf), Unwrap(alloc.mem), alloc.offs);
     CheckVkResult(vkr);
 
-    vt->CmdUpdateBuffer(Unwrap(cmd), Unwrap(buf), 0, pattern.size(), pattern.data());
+    rdcarray<VkBufferCopy> bufRegions;
+    VkBufferCopy bufCopy;
+    // copy one row at a time (row of blocks, for blocks)
+    bufCopy.size = shape.bytes * DiscardPatternWidth / shape.width;
+
+    const uint32_t numHorizBatches = PatternBatchWidth / DiscardPatternWidth;
+
+    for(uint32_t y = 0; y < PatternBatchHeight / shape.height; y++)
+    {
+      // copy from the rows sequentially
+      bufCopy.srcOffset = bufCopy.size * (y % (DiscardPatternHeight / shape.height));
+      for(uint32_t x = 0; x < numHorizBatches; x++)
+      {
+        bufCopy.dstOffset = y * bufCopy.size * numHorizBatches + x * bufCopy.size;
+        bufRegions.push_back(bufCopy);
+      }
+    }
+
+    // copy byte-packed second stencil pattern afterwards
+    if(aspectFlags & VK_IMAGE_ASPECT_STENCIL_BIT)
+    {
+      const VkDeviceSize srcDepthOffset = DiscardPatternWidth * DiscardPatternHeight * shape.bytes;
+      const VkDeviceSize dstDepthOffset = PatternBatchWidth * PatternBatchHeight * shape.bytes;
+
+      bufCopy.size = DiscardPatternWidth;
+      for(uint32_t y = 0; y < PatternBatchHeight; y++)
+      {
+        // copy from the rows sequentially. The source data is depth-pitched
+        bufCopy.srcOffset = srcDepthOffset + bufCopy.size * shape.bytes * (y % DiscardPatternHeight);
+        for(uint32_t x = 0; x < numHorizBatches; x++)
+        {
+          bufCopy.dstOffset = dstDepthOffset + y * bufCopy.size * numHorizBatches + x * bufCopy.size;
+          bufRegions.push_back(bufCopy);
+        }
+      }
+    }
+
+    vt->CmdCopyBuffer(Unwrap(cmd), Unwrap(stage.buf), Unwrap(buf), (uint32_t)bufRegions.size(),
+                      bufRegions.data());
 
     m_DiscardPatterns[key] = buf;
 
@@ -2206,8 +2261,6 @@ void VulkanDebugManager::FillWithDiscardPattern(VkCommandBuffer cmd, DiscardType
 
     DoPipelineBarrier(cmd, 1, &bufBarrier);
   }
-
-  VkImageAspectFlags aspectFlags = discardRange.aspectMask & FormatImageAspects(imInfo.format);
 
   rdcarray<VkBufferImageCopy> mainCopies, stencilCopies;
 
@@ -2229,9 +2282,9 @@ void VulkanDebugManager::FillWithDiscardPattern(VkCommandBuffer cmd, DiscardType
       {
         for(uint32_t z = 0; z < extent.depth; z++)
         {
-          for(uint32_t y = discardRect.offset.y; y < extent.height; y += DiscardPatternHeight)
+          for(uint32_t y = discardRect.offset.y; y < extent.height; y += PatternBatchHeight)
           {
-            for(uint32_t x = discardRect.offset.x; x < extent.width; x += DiscardPatternWidth)
+            for(uint32_t x = discardRect.offset.x; x < extent.width; x += PatternBatchWidth)
             {
               VkBufferImageCopy region = {
                   0,
@@ -2243,11 +2296,11 @@ void VulkanDebugManager::FillWithDiscardPattern(VkCommandBuffer cmd, DiscardType
                   },
               };
 
-              region.imageExtent.width = RDCMIN(DiscardPatternWidth, extent.width - x);
-              region.imageExtent.height = RDCMIN(DiscardPatternHeight, extent.height - y);
+              region.imageExtent.width = RDCMIN(PatternBatchWidth, extent.width - x);
+              region.imageExtent.height = RDCMIN(PatternBatchHeight, extent.height - y);
               region.imageExtent.depth = 1;
 
-              region.bufferRowLength = DiscardPatternWidth;
+              region.bufferRowLength = PatternBatchWidth;
 
               // for depth/stencil copies, write depth first
               if(aspectFlags == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
@@ -2259,9 +2312,11 @@ void VulkanDebugManager::FillWithDiscardPattern(VkCommandBuffer cmd, DiscardType
               if(aspectFlags & VK_IMAGE_ASPECT_STENCIL_BIT)
               {
                 uint32_t depthStride = (imInfo.format == VK_FORMAT_D16_UNORM_S8_UINT ? 2 : 4);
+                VkDeviceSize depthOffset = PatternBatchWidth * PatternBatchHeight * depthStride;
+
                 // if it's a depth/stencil format, write stencil separately
-                region.bufferOffset = DiscardPatternWidth * DiscardPatternHeight * depthStride;
-                region.bufferRowLength = DiscardPatternWidth * depthStride;
+                region.bufferOffset = depthOffset;
+                region.bufferRowLength = PatternBatchWidth;
                 region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
 
                 stencilCopies.push_back(region);
@@ -3168,6 +3223,16 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
         CREATE_OBJECT(RemapPipeline[f][i][0], texRemapInfo);
 
         driver->vkDestroyRenderPass(driver->GetDev(), texRemapInfo.renderPass, NULL);
+
+        // reuse float 'green' as srgb
+        if(f == 0 && i == 0)
+        {
+          CREATE_OBJECT(texRemapInfo.renderPass, VK_FORMAT_R8G8B8A8_SRGB);
+
+          CREATE_OBJECT(RemapPipeline[f][i][1], texRemapInfo);
+
+          driver->vkDestroyRenderPass(driver->GetDev(), texRemapInfo.renderPass, NULL);
+        }
       }
     }
 
@@ -3176,17 +3241,17 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
 
     for(int f = 0; f < 3; f++)
     {
-      for(int i = 0; i < 3; i++)
-      {
-        texRemapInfo.fragment =
-            shaderCache->GetBuiltinModule(BuiltinShader::TexRemap, BuiltinShaderBaseType(i));
+      // only create this for uint, it's normally only needed there
+      int i = 1;
 
-        CREATE_OBJECT(texRemapInfo.renderPass, GetViewCastedFormat(formats[f], cast[i]));
+      texRemapInfo.fragment =
+          shaderCache->GetBuiltinModule(BuiltinShader::TexRemap, BuiltinShaderBaseType(i));
 
-        CREATE_OBJECT(RemapPipeline[f][i][1], texRemapInfo);
+      CREATE_OBJECT(texRemapInfo.renderPass, GetViewCastedFormat(formats[f], cast[i]));
 
-        driver->vkDestroyRenderPass(driver->GetDev(), texRemapInfo.renderPass, NULL);
-      }
+      CREATE_OBJECT(RemapPipeline[f][i][1], texRemapInfo);
+
+      driver->vkDestroyRenderPass(driver->GetDev(), texRemapInfo.renderPass, NULL);
     }
 
     texDisplayInfo.renderPass = SRGBA8RP;
@@ -3221,7 +3286,8 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
     int index = 0;
 
     // we pick RGBA8 formats to be guaranteed they will be supported
-    VkFormat formats[] = {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_UINT, VK_FORMAT_R8G8B8A8_SINT};
+    VkFormat formats[] = {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_UINT,
+                          VK_FORMAT_R8G8B8A8_SINT, VK_FORMAT_D16_UNORM};
     VkImageType types[] = {VK_IMAGE_TYPE_1D, VK_IMAGE_TYPE_2D, VK_IMAGE_TYPE_3D, VK_IMAGE_TYPE_2D};
     VkImageViewType viewtypes[] = {
         VK_IMAGE_VIEW_TYPE_1D_ARRAY, VK_IMAGE_VIEW_TYPE_2D_ARRAY, VK_IMAGE_VIEW_TYPE_3D,
@@ -3254,6 +3320,10 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
     {
       for(size_t type = 0; type < ARRAY_COUNT(types); type++)
       {
+        // don't create 3D depth
+        if(formats[fmt] == VK_FORMAT_D16_UNORM && types[type] == VK_IMAGE_TYPE_3D)
+          continue;
+
         // create 1x1 image of the right size
         VkImageCreateInfo imInfo = {
             VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -3273,8 +3343,8 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
             VK_IMAGE_LAYOUT_UNDEFINED,
         };
 
-        // make the 2D image cube-compatible
-        if(type == 1)
+        // make the 2D image cube-compatible for non-depth
+        if(type == 1 && formats[fmt] != VK_FORMAT_D16_UNORM)
         {
           imInfo.arrayLayers = 6;
           imInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
@@ -3282,6 +3352,9 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
 
         vkr = driver->vkCreateImage(driver->GetDev(), &imInfo, NULL, &DummyImages[fmt][type]);
         driver->CheckVkResult(vkr);
+
+        NameVulkanObject(DummyImages[fmt][type],
+                         "DummyImages[" + ToStr(fmt) + "][" + ToStr(type) + "]");
 
         MemoryAllocation alloc = driver->AllocateMemoryForResource(
             DummyImages[fmt][type], MemoryScope::ImmutableReplayDebug, MemoryType::GPULocal);
@@ -3292,6 +3365,10 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
         vkr = driver->vkBindImageMemory(driver->GetDev(), DummyImages[fmt][type], alloc.mem,
                                         alloc.offs);
         driver->CheckVkResult(vkr);
+
+        // don't add dummy writes/infos for depth, we just want the images and views
+        if(formats[fmt] == VK_FORMAT_D16_UNORM)
+          continue;
 
         // fill out the descriptor set write to the write binding - set will be filled out
         // on demand when we're actually using these writes.
@@ -3335,6 +3412,8 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
     DummyInfos[index + 1].sampler = Unwrap(DummySampler);
     DummyInfos[index + 1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+    RDCASSERT(index + 1 < (int)ARRAY_COUNT(DummyInfos));
+
     // align up for the dummy buffer
     {
       VkBufferCreateInfo bufInfo = {
@@ -3373,6 +3452,10 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
           cube = true;
         }
 
+        // don't create 3D depth or cubes
+        if(formats[fmt] == VK_FORMAT_D16_UNORM && (viewtypes[type] == VK_IMAGE_VIEW_TYPE_3D || cube))
+          continue;
+
         VkImageViewCreateInfo viewInfo = {
             VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             NULL,
@@ -3387,6 +3470,9 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
             },
         };
 
+        if(formats[fmt] == VK_FORMAT_D16_UNORM)
+          viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+
         if(cube)
           viewInfo.subresourceRange.layerCount = 6;
 
@@ -3394,13 +3480,12 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
                                         &DummyImageViews[fmt][type]);
         driver->CheckVkResult(vkr);
 
+        NameVulkanObject(DummyImageViews[fmt][type],
+                         "DummyImageViews[" + ToStr(fmt) + "][" + ToStr(type) + "]");
+
         // the cubemap view we don't create an info for it, and the image is already transitioned
         if(cube)
           continue;
-
-        RDCASSERT((size_t)index < ARRAY_COUNT(DummyInfos), index);
-
-        DummyInfos[index].imageView = Unwrap(DummyImageViews[fmt][type]);
 
         // need to update image layout into valid state
         VkImageMemoryBarrier barrier = {
@@ -3416,7 +3501,17 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
             {VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
         };
 
+        if(formats[fmt] == VK_FORMAT_D16_UNORM)
+          barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+
         DoPipelineBarrier(cmd, 1, &barrier);
+
+        if(formats[fmt] == VK_FORMAT_D16_UNORM)
+          continue;
+
+        RDCASSERT((size_t)index < ARRAY_COUNT(DummyInfos), index);
+
+        DummyInfos[index].imageView = Unwrap(DummyImageViews[fmt][type]);
 
         index++;
       }
@@ -3425,6 +3520,8 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
     // duplicate 2D dummy image into YUV
     DummyInfos[index].imageView = DummyInfos[1].imageView;
     DummyInfos[index + 1].imageView = DummyInfos[1].imageView;
+
+    RDCASSERT(index + 1 < (int)ARRAY_COUNT(DummyInfos));
 
     if(DummyBuffer != VK_NULL_HANDLE)
     {
@@ -3809,6 +3906,8 @@ void VulkanReplay::PixelPicking::Init(WrappedVulkan *driver, VkDescriptorPool de
   vkr = driver->vkCreateImage(driver->GetDev(), &imInfo, NULL, &Image);
   driver->CheckVkResult(vkr);
 
+  NameVulkanObject(Image, "PixelPick.Image");
+
   VkMemoryRequirements mrq = {0};
   driver->vkGetImageMemoryRequirements(driver->GetDev(), Image, &mrq);
 
@@ -3840,6 +3939,8 @@ void VulkanReplay::PixelPicking::Init(WrappedVulkan *driver, VkDescriptorPool de
 
   vkr = driver->vkCreateImageView(driver->GetDev(), &viewInfo, NULL, &ImageView);
   driver->CheckVkResult(vkr);
+
+  NameVulkanObject(ImageView, "PixelPick.ImageView");
 
   // need to update image layout into valid state
 
@@ -4126,6 +4227,8 @@ void ShaderDebugData::Init(WrappedVulkan *driver, VkDescriptorPool descriptorPoo
   vkr = driver->vkCreateImage(driver->GetDev(), &imInfo, NULL, &Image);
   driver->CheckVkResult(vkr);
 
+  NameVulkanObject(Image, "ShaderDebugData.Image");
+
   VkMemoryRequirements mrq = {0};
   driver->vkGetImageMemoryRequirements(driver->GetDev(), Image, &mrq);
 
@@ -4157,6 +4260,8 @@ void ShaderDebugData::Init(WrappedVulkan *driver, VkDescriptorPool descriptorPoo
 
   vkr = driver->vkCreateImageView(driver->GetDev(), &viewInfo, NULL, &ImageView);
   driver->CheckVkResult(vkr);
+
+  NameVulkanObject(ImageView, "ShaderDebugData.ImageView");
 
   VkAttachmentDescription attDesc = {
       0,

@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -156,6 +156,9 @@ bool WrappedVulkan::Prepare_InitialState(WrappedVkRes *res)
       CheckVkResult(vkr);
 
       GetResourceManager()->WrapResource(Unwrap(d), arrayIm);
+
+      NameUnwrappedVulkanObject(
+          arrayIm, StringFormat::Fmt("Initial State array image for %s", ToStr(id).c_str()));
 
       MemoryAllocation arrayMem =
           AllocateMemoryForResource(arrayIm, MemoryScope::InitialContents, MemoryType::GPULocal);
@@ -502,13 +505,6 @@ bool WrappedVulkan::Prepare_InitialState(WrappedVkRes *res)
 
     if(readbackmem.mem == VK_NULL_HANDLE)
       return false;
-
-    // dummy request to keep the validation layers happy - the buffers are identical so the
-    // requirements must be identical
-    {
-      VkMemoryRequirements mrq = {0};
-      ObjDisp(d)->GetBufferMemoryRequirements(Unwrap(d), Unwrap(dstBuf), &mrq);
-    }
 
     CheckVkResult(vkr);
     vkr = ObjDisp(d)->BindBufferMemory(Unwrap(d), Unwrap(dstBuf), Unwrap(readbackmem.mem),
@@ -1615,6 +1611,9 @@ bool WrappedVulkan::Serialise_InitialState(SerialiserType &ser, ResourceId id, V
 
           vkr = vkCreateImage(d, &arrayInfo, NULL, &arrayIm);
           CheckVkResult(vkr);
+
+          NameVulkanObject(
+              arrayIm, StringFormat::Fmt("Initial State array image for %s", ToStr(id).c_str()));
 
           MemoryAllocation arrayMem =
               AllocateMemoryForResource(arrayIm, MemoryScope::InitialContents, MemoryType::GPULocal);

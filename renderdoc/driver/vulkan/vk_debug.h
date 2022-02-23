@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -188,4 +188,5 @@ private:
   VkDescriptorSet m_DiscardSet[(size_t)DiscardType::Count] = {};
   GPUBuffer m_DiscardCB[(size_t)DiscardType::Count];
   std::map<rdcpair<VkFormat, DiscardType>, VkBuffer> m_DiscardPatterns;
+  std::map<rdcpair<VkFormat, DiscardType>, GPUBuffer> m_DiscardStage;
 };

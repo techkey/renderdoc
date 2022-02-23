@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,6 +23,11 @@
  ******************************************************************************/
 
 #include "vk_info.h"
+#include "core/settings.h"
+#include "lz4/lz4.h"
+
+// for compatibility we use the same DXBC name since it's now configured by the UI
+RDOC_EXTERN_CONFIG(rdcarray<rdcstr>, DXBC_Debug_SearchDirPaths);
 
 VkDynamicState ConvertDynamicState(VulkanDynamicStateIndex idx)
 {
@@ -515,6 +520,19 @@ void VulkanCreationInfo::Pipeline::Init(VulkanResourceManager *resourceMan,
       scissors[i] = pCreateInfo->pViewportState->pScissors[i];
   }
 
+  // VkPipelineFragmentShadingRateStateCreateInfoKHR
+  shadingRate = {1, 1};
+  shadingRateCombiners[0] = shadingRateCombiners[1] = VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR;
+  const VkPipelineFragmentShadingRateStateCreateInfoKHR *shadingRateInfo =
+      (const VkPipelineFragmentShadingRateStateCreateInfoKHR *)FindNextStruct(
+          pCreateInfo, VK_STRUCTURE_TYPE_PIPELINE_FRAGMENT_SHADING_RATE_STATE_CREATE_INFO_KHR);
+  if(shadingRateInfo)
+  {
+    shadingRate = shadingRateInfo->fragmentSize;
+    shadingRateCombiners[0] = shadingRateInfo->combinerOps[0];
+    shadingRateCombiners[1] = shadingRateInfo->combinerOps[1];
+  }
+
   // VkPipelineDiscardRectangleStateCreateInfoEXT
   discardMode = VK_DISCARD_RECTANGLE_MODE_EXCLUSIVE_EXT;
 
@@ -919,6 +937,8 @@ void VulkanCreationInfo::RenderPass::Init(VulkanResourceManager *resourceMan,
     if(dst.depthstencilAttachment >= 0)
       attachments[dst.depthstencilAttachment].used = true;
 
+    dst.depthstencilResolveAttachment = -1;
+
     dst.fragmentDensityAttachment =
         (fragmentDensity &&
                  fragmentDensity->fragmentDensityMapAttachment.attachment != VK_ATTACHMENT_UNUSED
@@ -930,6 +950,10 @@ void VulkanCreationInfo::RenderPass::Init(VulkanResourceManager *resourceMan,
                  fragmentDensity->fragmentDensityMapAttachment.attachment != VK_ATTACHMENT_UNUSED
              ? fragmentDensity->fragmentDensityMapAttachment.layout
              : VK_IMAGE_LAYOUT_UNDEFINED);
+
+    dst.shadingRateAttachment = -1;
+    dst.shadingRateLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    dst.shadingRateTexelSize = VkExtent2D({1, 1});
 
     if(multiview && multiview->subpassCount > 0)
     {
@@ -1037,6 +1061,18 @@ void VulkanCreationInfo::RenderPass::Init(VulkanResourceManager *resourceMan,
     if(separateStencil)
       dst.stencilLayout = separateStencil->stencilLayout;
 
+    // VK_KHR_depth_stencil_resolve
+    const VkSubpassDescriptionDepthStencilResolve *depthstencilResolve =
+        (const VkSubpassDescriptionDepthStencilResolve *)FindNextStruct(
+            &src, VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE);
+
+    dst.depthstencilResolveAttachment =
+        (depthstencilResolve &&
+                 depthstencilResolve->pDepthStencilResolveAttachment->attachment != VK_ATTACHMENT_UNUSED
+             ? depthstencilResolve->pDepthStencilResolveAttachment->attachment
+             : -1);
+
+    // VK_EXT_fragment_density_map
     dst.fragmentDensityAttachment =
         (fragmentDensity &&
                  fragmentDensity->fragmentDensityMapAttachment.attachment != VK_ATTACHMENT_UNUSED
@@ -1048,6 +1084,25 @@ void VulkanCreationInfo::RenderPass::Init(VulkanResourceManager *resourceMan,
                  fragmentDensity->fragmentDensityMapAttachment.attachment != VK_ATTACHMENT_UNUSED
              ? fragmentDensity->fragmentDensityMapAttachment.layout
              : VK_IMAGE_LAYOUT_UNDEFINED);
+
+    // VK_KHR_fragment_shading_rate
+    const VkFragmentShadingRateAttachmentInfoKHR *shadingRate =
+        (const VkFragmentShadingRateAttachmentInfoKHR *)FindNextStruct(
+            &src, VK_STRUCTURE_TYPE_FRAGMENT_SHADING_RATE_ATTACHMENT_INFO_KHR);
+    dst.shadingRateAttachment =
+        (shadingRate && shadingRate->pFragmentShadingRateAttachment &&
+                 shadingRate->pFragmentShadingRateAttachment->attachment != VK_ATTACHMENT_UNUSED
+             ? shadingRate->pFragmentShadingRateAttachment->attachment
+             : -1);
+
+    dst.shadingRateLayout =
+        (shadingRate && shadingRate->pFragmentShadingRateAttachment &&
+                 shadingRate->pFragmentShadingRateAttachment->attachment != VK_ATTACHMENT_UNUSED
+             ? shadingRate->pFragmentShadingRateAttachment->layout
+             : VK_IMAGE_LAYOUT_UNDEFINED);
+
+    dst.shadingRateTexelSize =
+        shadingRate ? shadingRate->shadingRateAttachmentTexelSize : VkExtent2D({1, 1});
 
     for(uint32_t i = 0; i < 32; i++)
     {
@@ -1328,6 +1383,127 @@ void VulkanCreationInfo::ShaderModule::Init(VulkanResourceManager *resourceMan,
     spirv.Parse(rdcarray<uint32_t>((uint32_t *)(pCreateInfo->pCode),
                                    pCreateInfo->codeSize / sizeof(uint32_t)));
   }
+}
+
+void VulkanCreationInfo::ShaderModule::Reinit()
+{
+  bool lz4 = false;
+
+  rdcstr originalPath = unstrippedPath;
+
+  if(!strncmp(originalPath.c_str(), "lz4#", 4))
+  {
+    originalPath = originalPath.substr(4);
+    lz4 = true;
+  }
+  // could support more if we're willing to compile in the decompressor
+
+  FILE *originalShaderFile = NULL;
+
+  const rdcarray<rdcstr> &searchPaths = DXBC_Debug_SearchDirPaths();
+
+  size_t numSearchPaths = searchPaths.size();
+
+  rdcstr foundPath;
+
+  // keep searching until we've exhausted all possible path options, or we've found a file that
+  // opens
+  while(originalShaderFile == NULL && !originalPath.empty())
+  {
+    // while we haven't found a file, keep trying through the search paths. For i==0
+    // check the path on its own, in case it's an absolute path.
+    for(size_t i = 0; originalShaderFile == NULL && i <= numSearchPaths; i++)
+    {
+      if(i == 0)
+      {
+        originalShaderFile = FileIO::fopen(originalPath, FileIO::ReadBinary);
+        foundPath = originalPath;
+        continue;
+      }
+      else
+      {
+        const rdcstr &searchPath = searchPaths[i - 1];
+        foundPath = searchPath + "/" + originalPath;
+        originalShaderFile = FileIO::fopen(foundPath, FileIO::ReadBinary);
+      }
+    }
+
+    if(originalShaderFile == NULL)
+    {
+      // follow D3D's search behaviour for consistency: when presented with a
+      // relative path containing subfolders like foo/bar/blah.pdb then we should first try to
+      // append it to all search paths as-is, then strip off the top-level subdirectory to get
+      // bar/blah.pdb and try that in all search directories, and keep going. So if we got here
+      // and didn't open a file, try to strip off the the top directory and continue.
+      int32_t offs = originalPath.find_first_of("\\/");
+
+      // if we couldn't find a directory separator there's nothing to do, stop looking
+      if(offs == -1)
+        break;
+
+      // otherwise strip up to there and keep going
+      originalPath.erase(0, offs + 1);
+    }
+  }
+
+  if(originalShaderFile == NULL)
+    return;
+
+  FileIO::fseek64(originalShaderFile, 0L, SEEK_END);
+  uint64_t originalShaderSize = FileIO::ftell64(originalShaderFile);
+  FileIO::fseek64(originalShaderFile, 0, SEEK_SET);
+
+  {
+    bytebuf debugBytecode;
+
+    debugBytecode.resize((size_t)originalShaderSize);
+    FileIO::fread(&debugBytecode[0], sizeof(byte), (size_t)originalShaderSize, originalShaderFile);
+
+    if(lz4)
+    {
+      rdcarray<byte> decompressed;
+
+      // first try decompressing to 1MB flat
+      decompressed.resize(100 * 1024);
+
+      int ret = LZ4_decompress_safe((const char *)&debugBytecode[0], (char *)&decompressed[0],
+                                    (int)debugBytecode.size(), (int)decompressed.size());
+
+      if(ret < 0)
+      {
+        // if it failed, either source is corrupt or we didn't allocate enough space.
+        // Just allocate 255x compressed size since it can't need any more than that.
+        decompressed.resize(255 * debugBytecode.size());
+
+        ret = LZ4_decompress_safe((const char *)&debugBytecode[0], (char *)&decompressed[0],
+                                  (int)debugBytecode.size(), (int)decompressed.size());
+
+        if(ret < 0)
+        {
+          RDCERR("Failed to decompress LZ4 data from %s", foundPath.c_str());
+          return;
+        }
+      }
+
+      RDCASSERT(ret > 0, ret);
+
+      // we resize and memcpy instead of just doing .swap() because that would
+      // transfer over the over-large pessimistic capacity needed for decompression
+      debugBytecode.resize(ret);
+      memcpy(&debugBytecode[0], &decompressed[0], debugBytecode.size());
+    }
+
+    rdcspv::Reflector reflTest;
+    reflTest.Parse(rdcarray<uint32_t>((uint32_t *)(debugBytecode.data()),
+                                      debugBytecode.size() / sizeof(uint32_t)));
+
+    if(!reflTest.GetSPIRV().empty())
+    {
+      spirv = reflTest;
+    }
+  }
+
+  FileIO::fclose(originalShaderFile);
 }
 
 void VulkanCreationInfo::ShaderModuleReflection::Init(VulkanResourceManager *resourceMan,

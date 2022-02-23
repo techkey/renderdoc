@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -347,12 +347,12 @@ void WrappedVulkan::SubmitCmds(VkSemaphore *unwrappedWaitSemaphores,
     CheckVkResult(vkr);
   }
 
+  m_InternalCmds.submittedcmds.append(m_InternalCmds.pendingcmds);
+  m_InternalCmds.pendingcmds.clear();
+
 #if ENABLED(SINGLE_FLUSH_VALIDATE)
   FlushQ();
 #endif
-
-  m_InternalCmds.submittedcmds.append(m_InternalCmds.pendingcmds);
-  m_InternalCmds.pendingcmds.clear();
 }
 
 VkSemaphore WrappedVulkan::GetNextSemaphore()
@@ -1227,6 +1227,9 @@ static const VkExtensionProperties supportedExtensions[] = {
         VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME, VK_KHR_FORMAT_FEATURE_FLAGS_2_SPEC_VERSION,
     },
     {
+        VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, VK_KHR_FRAGMENT_SHADING_RATE_SPEC_VERSION,
+    },
+    {
         VK_KHR_GET_DISPLAY_PROPERTIES_2_EXTENSION_NAME, VK_KHR_GET_DISPLAY_PROPERTIES_2_SPEC_VERSION,
     },
     {
@@ -1453,6 +1456,14 @@ static const VkExtensionProperties supportedExtensions[] = {
         VK_NV_WIN32_KEYED_MUTEX_EXTENSION_NAME, VK_NV_WIN32_KEYED_MUTEX_SPEC_VERSION,
     },
 #endif
+    {
+        VK_QCOM_FRAGMENT_DENSITY_MAP_OFFSET_EXTENSION_NAME,
+        VK_QCOM_FRAGMENT_DENSITY_MAP_OFFSET_SPEC_VERSION,
+    },
+    {
+        VK_QCOM_RENDER_PASS_SHADER_RESOLVE_EXTENSION_NAME,
+        VK_QCOM_RENDER_PASS_SHADER_RESOLVE_SPEC_VERSION,
+    },
 };
 
 // this is the list of extensions we provide - regardless of whether the ICD supports them
@@ -1895,20 +1906,24 @@ bool WrappedVulkan::EndFrameCapture(void *dev, void *wnd)
   RDCLOG("Finished capture, Frame %u", m_CapturedFrames.back().frameNumber);
 
   VkImage backbuffer = VK_NULL_HANDLE;
-  const PresentInfo *presentInfo = NULL;
-  VkResourceRecord *swaprecord = NULL;
+  const ImageInfo *swapImageInfo = NULL;
+  uint32_t swapQueueIndex = 0;
+  VkImageLayout swapLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
   if(swap != VK_NULL_HANDLE)
   {
     GetResourceManager()->MarkResourceFrameReferenced(GetResID(swap), eFrameRef_Read);
 
-    swaprecord = GetRecord(swap);
+    VkResourceRecord *swaprecord = GetRecord(swap);
     RDCASSERT(swaprecord->swapInfo);
 
     const SwapchainInfo &swapInfo = *swaprecord->swapInfo;
 
-    presentInfo = &swapInfo.lastPresent;
-    backbuffer = swapInfo.images[presentInfo->imageIndex].im;
+    backbuffer = swapInfo.images[swapInfo.lastPresent.imageIndex].im;
+    swapImageInfo = &swapInfo.imageInfo;
+    swapQueueIndex = GetRecord(swapInfo.lastPresent.presentQueue)->queueFamilyIndex;
+    swapLayout =
+        swapInfo.shared ? VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
     // mark all images referenced as well
     for(size_t i = 0; i < swapInfo.images.size(); i++)
@@ -1918,7 +1933,9 @@ bool WrappedVulkan::EndFrameCapture(void *dev, void *wnd)
   else
   {
     // if a swapchain wasn't specified or found, use the last one presented
-    swaprecord = GetResourceManager()->GetResourceRecord(m_LastSwap);
+    VkResourceRecord *swaprecord = GetResourceManager()->GetResourceRecord(m_LastSwap);
+    VkResourceRecord *VRBackbufferRecord =
+        GetResourceManager()->GetResourceRecord(m_CurrentVRBackbuffer);
 
     if(swaprecord)
     {
@@ -1927,13 +1944,26 @@ bool WrappedVulkan::EndFrameCapture(void *dev, void *wnd)
 
       const SwapchainInfo &swapInfo = *swaprecord->swapInfo;
 
-      presentInfo = &swapInfo.lastPresent;
-      backbuffer = swapInfo.images[presentInfo->imageIndex].im;
+      backbuffer = swapInfo.images[swapInfo.lastPresent.imageIndex].im;
+      swapImageInfo = &swapInfo.imageInfo;
+      swapQueueIndex = GetRecord(swapInfo.lastPresent.presentQueue)->queueFamilyIndex;
+      swapLayout =
+          swapInfo.shared ? VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
       // mark all images referenced as well
       for(size_t i = 0; i < swapInfo.images.size(); i++)
         GetResourceManager()->MarkResourceFrameReferenced(GetResID(swapInfo.images[i].im),
                                                           eFrameRef_Read);
+    }
+    else if(VRBackbufferRecord)
+    {
+      RDCASSERT(VRBackbufferRecord->resInfo);
+      backbuffer = GetResourceManager()->GetCurrentHandle<VkImage>(m_CurrentVRBackbuffer);
+      swapImageInfo = &VRBackbufferRecord->resInfo->imageInfo;
+      swapQueueIndex = m_QueueFamilyIdx;
+      swapLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+      GetResourceManager()->MarkResourceFrameReferenced(m_CurrentVRBackbuffer, eFrameRef_Read);
     }
   }
 
@@ -1975,7 +2005,7 @@ bool WrappedVulkan::EndFrameCapture(void *dev, void *wnd)
   const uint32_t maxSize = 2048;
   RenderDoc::FramePixels fp;
 
-  if(swaprecord != NULL)
+  if(backbuffer != VK_NULL_HANDLE)
   {
     VkDevice device = GetDev();
     VkCommandBuffer cmd = GetNextCmd();
@@ -1984,7 +2014,7 @@ bool WrappedVulkan::EndFrameCapture(void *dev, void *wnd)
 
     vt->DeviceWaitIdle(Unwrap(device));
 
-    const SwapchainInfo &swapInfo = *swaprecord->swapInfo;
+    const ImageInfo &imageInfo = *swapImageInfo;
 
     // since this happens during capture, we don't want to start serialising extra buffer creates,
     // so we manually create & then just wrap.
@@ -1994,9 +2024,10 @@ bool WrappedVulkan::EndFrameCapture(void *dev, void *wnd)
 
     // create readback buffer
     VkBufferCreateInfo bufInfo = {
-        VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0,
-        GetByteSize(swapInfo.imageInfo.extent.width, swapInfo.imageInfo.extent.height, 1,
-                    swapInfo.imageInfo.format, 0),
+        VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        NULL,
+        0,
+        GetByteSize(imageInfo.extent.width, imageInfo.extent.height, 1, imageInfo.format, 0),
         VK_BUFFER_USAGE_TRANSFER_DST_BIT,
     };
     vt->CreateBuffer(Unwrap(device), &bufInfo, NULL, &readbackBuf);
@@ -2018,8 +2049,7 @@ bool WrappedVulkan::EndFrameCapture(void *dev, void *wnd)
     vkr = vt->BeginCommandBuffer(Unwrap(cmd), &beginInfo);
     CheckVkResult(vkr);
 
-    uint32_t rowPitch =
-        GetByteSize(swapInfo.imageInfo.extent.width, 1, 1, swapInfo.imageInfo.format, 0);
+    uint32_t rowPitch = GetByteSize(imageInfo.extent.width, 1, 1, imageInfo.format, 0);
 
     VkBufferImageCopy cpy = {
         0,
@@ -2029,27 +2059,21 @@ bool WrappedVulkan::EndFrameCapture(void *dev, void *wnd)
         {
             0, 0, 0,
         },
-        {swapInfo.imageInfo.extent.width, swapInfo.imageInfo.extent.height, 1},
+        {imageInfo.extent.width, imageInfo.extent.height, 1},
     };
-
-    VkResourceRecord *queueRecord = GetRecord(swapInfo.lastPresent.presentQueue);
-    uint32_t swapQueueIndex = queueRecord->queueFamilyIndex;
 
     VkImageMemoryBarrier bbBarrier = {
         VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         NULL,
         0,
         VK_ACCESS_TRANSFER_READ_BIT,
-        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        swapLayout,
         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         swapQueueIndex,
         m_QueueFamilyIdx,
         Unwrap(backbuffer),
         {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
     };
-
-    if(swapInfo.shared)
-      bbBarrier.oldLayout = VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR;
 
     DoPipelineBarrier(cmd, 1, &bbBarrier);
 
@@ -2138,9 +2162,9 @@ bool WrappedVulkan::EndFrameCapture(void *dev, void *wnd)
     vt->DestroyBuffer(Unwrap(device), Unwrap(readbackBuf), NULL);
     GetResourceManager()->ReleaseWrappedResource(readbackBuf);
 
-    ResourceFormat fmt = MakeResourceFormat(swapInfo.imageInfo.format);
-    fp.width = swapInfo.imageInfo.extent.width;
-    fp.height = swapInfo.imageInfo.extent.height;
+    ResourceFormat fmt = MakeResourceFormat(imageInfo.format);
+    fp.width = imageInfo.extent.width;
+    fp.height = imageInfo.extent.height;
     fp.pitch = rowPitch;
     fp.stride = fmt.compByteWidth * fmt.compCount;
     fp.bpc = fmt.compByteWidth;
@@ -3519,8 +3543,10 @@ bool WrappedVulkan::ProcessChunk(ReadSerialiser &ser, VulkanChunk chunk)
 
     case VulkanChunk::vkCmdBeginRendering:
       return Serialise_vkCmdBeginRendering(ser, VK_NULL_HANDLE, NULL);
-    case VulkanChunk::vkCmdEndRendering:
-      return Serialise_vkCmdEndRendering(ser, VK_NULL_HANDLE);
+    case VulkanChunk::vkCmdEndRendering: return Serialise_vkCmdEndRendering(ser, VK_NULL_HANDLE);
+
+    case VulkanChunk::vkCmdSetFragmentShadingRateKHR:
+      return Serialise_vkCmdSetFragmentShadingRateKHR(ser, VK_NULL_HANDLE, NULL, NULL);
 
     // chunks that are reserved but not yet serialised
     case VulkanChunk::vkResetCommandPool:
@@ -3712,6 +3738,13 @@ void WrappedVulkan::ReplayLog(uint32_t startEventID, uint32_t endEventID, Replay
       vkr = ObjDisp(cmd)->BeginCommandBuffer(Unwrap(cmd), &beginInfo);
       CheckVkResult(vkr);
 
+      // we're replaying a single item inline, even if it was previously in a secondary command
+      // buffer execution.
+      VkSubpassContents subpassContents = m_RenderState.subpassContents;
+      VkRenderingFlags dynamicFlags = m_RenderState.dynamicRendering.flags;
+      m_RenderState.subpassContents = VK_SUBPASS_CONTENTS_INLINE;
+      m_RenderState.dynamicRendering.flags &= VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT;
+
       rpWasActive = m_Partial[Primary].renderPassActive;
 
       if(m_Partial[Primary].renderPassActive)
@@ -3756,6 +3789,9 @@ void WrappedVulkan::ReplayLog(uint32_t startEventID, uint32_t endEventID, Replay
         // even outside of render passes, we need to restore the state
         m_RenderState.BindPipeline(this, cmd, VulkanRenderState::BindInitial, false);
       }
+
+      m_RenderState.subpassContents = subpassContents;
+      m_RenderState.dynamicRendering.flags = dynamicFlags;
     }
 
     ReplayStatus status = ReplayStatus::Succeeded;
@@ -4082,6 +4118,12 @@ VkBool32 WrappedVulkan::DebugCallback(MessageSeverity severity, MessageCategory 
     // Not an error, this is defined as with all APIs to drop the output.
     if(strstr(pMessageId, "UNASSIGNED-CoreValidation-Shader-OutputNotConsumed"))
       return false;
+    // "Attachment X not written by fragment shader; undefined values will be written to attachment"
+    // Not strictly an error, though more of a problem than the above. However we occasionally do
+    // this on purpose in the pixel history when running history on depth targets, and it's safe to
+    // silence unless we see undefined values.
+    if(strstr(pMessageId, "UNASSIGNED-CoreValidation-Shader-InputNotProduced"))
+      return false;
 
     // "Non-linear image is aliased with linear buffer"
     // Not an error, the validation layers complain at our whole-mem bufs
@@ -4247,6 +4289,24 @@ bool WrappedVulkan::ShouldUpdateRenderState(ResourceId cmdid, bool forcePrimary)
     return cmdid == m_Partial[Secondary].partialParent;
 
   return cmdid == m_Partial[Primary].partialParent;
+}
+
+bool WrappedVulkan::IsRenderpassOpen(ResourceId cmdid)
+{
+  if(m_OutsideCmdBuffer != VK_NULL_HANDLE)
+    return true;
+
+  // if not, check if we're one of the actual partial command buffers and check to see if we're in
+  // the range for their partial replay.
+  for(int p = 0; p < ePartialNum; p++)
+  {
+    if(cmdid == m_Partial[p].partialParent)
+    {
+      return m_BakedCmdBufferInfo[cmdid].renderPassOpen;
+    }
+  }
+
+  return false;
 }
 
 VkCommandBuffer WrappedVulkan::RerecordCmdBuf(ResourceId cmdid, PartialReplayIndex partialType)

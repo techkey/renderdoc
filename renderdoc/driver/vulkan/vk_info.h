@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -403,6 +403,10 @@ struct VulkanCreationInfo
     // VkPipelineDiscardRectangleStateCreateInfoEXT
     rdcarray<VkRect2D> discardRectangles;
     VkDiscardRectangleModeEXT discardMode;
+
+    // VkPipelineFragmentShadingRateCreateInfoKHR
+    VkExtent2D shadingRate;
+    VkFragmentShadingRateCombinerOpKHR shadingRateCombiners[2];
   };
   std::unordered_map<ResourceId, Pipeline> m_Pipeline;
 
@@ -449,7 +453,9 @@ struct VulkanCreationInfo
       rdcarray<uint32_t> colorAttachments;
       rdcarray<uint32_t> resolveAttachments;
       int32_t depthstencilAttachment;
+      int32_t depthstencilResolveAttachment;
       int32_t fragmentDensityAttachment;
+      int32_t shadingRateAttachment;
 
       rdcarray<VkImageLayout> inputLayouts;
       rdcarray<VkImageLayout> inputStencilLayouts;
@@ -457,6 +463,9 @@ struct VulkanCreationInfo
       VkImageLayout depthLayout;
       VkImageLayout stencilLayout;
       VkImageLayout fragmentDensityLayout;
+      VkImageLayout shadingRateLayout;
+
+      VkExtent2D shadingRateTexelSize;
 
       rdcarray<uint32_t> multiviews;
     };
@@ -628,6 +637,8 @@ struct VulkanCreationInfo
   {
     void Init(VulkanResourceManager *resourceMan, VulkanCreationInfo &info,
               const VkShaderModuleCreateInfo *pCreateInfo);
+
+    void Reinit();
 
     ShaderModuleReflection &GetReflection(ShaderStage stage, const rdcstr &entry, ResourceId pipe)
     {

@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  * Copyright (c) 2014 Crytek
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -691,7 +691,7 @@ void ReplayOutput::Display()
     disp.linearDisplayAsGamma = true;
     disp.flipY = false;
     disp.subresource = m_Thumbnails[i].sub;
-    disp.subresource.sample = ~0U;
+    disp.subresource.sample = 0;
     disp.customShaderId = ResourceId();
     disp.resourceId = m_pDevice->GetLiveID(m_Thumbnails[i].texture);
     disp.typeCast = m_Thumbnails[i].typeCast;

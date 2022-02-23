@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  * Copyright (c) 2014 Crytek
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -289,6 +289,8 @@ static void ActiveRemoteClientThread(ClientThread *threadData,
   writer.SetStreamingMode(true);
   reader.SetStreamingMode(true);
 
+  uint32_t captureNum = 0;
+
   while(client)
   {
     if(client && !client->Connected())
@@ -395,6 +397,13 @@ static void ActiveRemoteClientThread(ClientThread *threadData,
       rdcstr path;
       rdcstr dummy, dummy2;
       FileIO::GetDefaultFiles("remotecopy", path, dummy, dummy2);
+
+      // remove the .rdc
+      path.erase(path.size() - 4, 4);
+
+      // append a process- and capture- specific suffix to avoid clashes
+      path += StringFormat::Fmt("_remotecopy_%u_%u.rdc", Process::GetCurrentPID(), captureNum);
+      captureNum++;
 
       RDCLOG("Copying file to local path '%s'.", path.c_str());
 
@@ -1147,6 +1156,18 @@ RENDERDOC_CreateRemoteServerConnection(const rdcstr &URL, IRemoteServer **rend)
 
     port = protocol->RemapPort(deviceID, port);
   }
+  else
+  {
+    int32_t idx = deviceID.indexOf(':');
+    if(idx > 0)
+    {
+      host = deviceID.substr(0, idx);
+      port = atoi(deviceID.substr(idx + 1).c_str()) & 0xffff;
+    }
+  }
+
+  if(port == 0)
+    return ReplayStatus::NetworkIOFailed;
 
   Network::Socket *sock = Network::CreateClientSocket(host, port, 750);
 

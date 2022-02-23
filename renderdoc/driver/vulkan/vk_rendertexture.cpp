@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -39,6 +39,11 @@ void VulkanReplay::CreateTexImageView(VkImage liveIm, const VulkanCreationInfo::
   if(views.typeCast != typeCast)
   {
     // if the type hint has changed, recreate the image views
+
+    // flush any pending commands that might use the old views
+    m_pDriver->SubmitCmds();
+    m_pDriver->FlushQ();
+
     for(size_t i = 0; i < ARRAY_COUNT(views.views); i++)
     {
       m_pDriver->vkDestroyImageView(dev, views.views[i], NULL);
@@ -104,6 +109,8 @@ void VulkanReplay::CreateTexImageView(VkImage liveIm, const VulkanCreationInfo::
     // create first view
     vkr = m_pDriver->vkCreateImageView(dev, &viewInfo, NULL, &views.views[0]);
     CheckVkResult(vkr);
+    NameVulkanObject(views.views[0], StringFormat::Fmt("CreateTexImageView view 0 %s",
+                                                       ToStr(GetResID(liveIm)).c_str()));
 
     // for depth-stencil images, create a second view for stencil only
     if(IsDepthAndStencilFormat(fmt))
@@ -112,6 +119,8 @@ void VulkanReplay::CreateTexImageView(VkImage liveIm, const VulkanCreationInfo::
 
       vkr = m_pDriver->vkCreateImageView(dev, &viewInfo, NULL, &views.views[1]);
       CheckVkResult(vkr);
+      NameVulkanObject(views.views[1], StringFormat::Fmt("CreateTexImageView view 1 %s",
+                                                         ToStr(GetResID(liveIm)).c_str()));
     }
   }
 }
@@ -534,7 +543,9 @@ bool VulkanReplay::RenderTextureInternal(TextureDisplay cfg, const ImageState &i
       else
         f = 0;
 
-      pipe = m_TexRender.RemapPipeline[f][i][greenonly ? 1 : 0];
+      bool srgb = (flags & eTexDisplay_RemapSRGB) != 0;
+
+      pipe = m_TexRender.RemapPipeline[f][i][(greenonly || srgb) ? 1 : 0];
     }
     else if(f16render)
     {

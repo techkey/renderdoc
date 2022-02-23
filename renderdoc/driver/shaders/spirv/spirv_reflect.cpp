@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -446,6 +446,36 @@ void Reflector::RegisterOp(Iter it)
   {
     loopBlocks.insert(curBlock);
   }
+  else if(opdata.op == Op::ExtInst)
+  {
+    OpShaderDbg dbg(it);
+
+    // we don't care about much debug info for just reflection. Only pay attention to source files,
+    // and potential names of global variables that might be missing.
+    if(dbg.set == knownExtSet[ExtSet_ShaderDbg])
+    {
+      if(dbg.inst == ShaderDbg::Source)
+      {
+        debugSources[dbg.result] = sources.size();
+        sources.push_back({
+            SourceLanguage::Unknown, strings[dbg.arg<Id>(0)],
+            dbg.params.size() > 1 ? strings[dbg.arg<Id>(1)] : rdcstr(),
+        });
+      }
+      else if(dbg.inst == ShaderDbg::CompilationUnit)
+      {
+        sources[debugSources[dbg.arg<Id>(2)]].lang =
+            (SourceLanguage)EvaluateConstant(dbg.arg<Id>(3), {}).value.u32v[0];
+      }
+      else if(dbg.inst == ShaderDbg::GlobalVariable)
+      {
+        // copy the name string to the variable string only if it's empty. If it has a name already,
+        // we prefer that. If the variable is DebugInfoNone then we don't care about it's name.
+        if(strings[dbg.arg<Id>(7)].empty())
+          strings[dbg.arg<Id>(7)] = strings[dbg.arg<Id>(0)];
+      }
+    }
+  }
 }
 
 void Reflector::UnregisterOp(Iter it)
@@ -690,6 +720,12 @@ void Reflector::MakeReflection(const GraphicsAPI sourceAPI, const ShaderStage st
 
     if(!sources[i].contents.empty())
       reflection.debugInfo.files.push_back({sources[i].name, sources[i].contents});
+  }
+
+  if(knownExtSet[ExtSet_ShaderDbg] != Id() && !reflection.debugInfo.files.empty())
+  {
+    reflection.debugInfo.compileFlags.flags.push_back({"preferSourceDebug", "1"});
+    reflection.debugInfo.sourceDebugInformation = true;
   }
 
   std::set<Id> usedIds;

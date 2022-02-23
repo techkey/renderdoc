@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -507,6 +507,8 @@ void VulkanReplay::CachePipelineExecutables(ResourceId pipeline)
 
   rdcarray<VkPipelineExecutablePropertiesKHR> executables;
   executables.resize(execCount);
+  for(uint32_t i = 0; i < execCount; i++)
+    executables[i].sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_PROPERTIES_KHR;
   data.resize(execCount);
   vt->GetPipelineExecutablePropertiesKHR(Unwrap(dev), &pipeInfo, &execCount, executables.data());
 
@@ -522,7 +524,7 @@ void VulkanReplay::CachePipelineExecutables(ResourceId pipeline)
     rdcarray<VkPipelineExecutableInternalRepresentationKHR> &irs = out.representations;
 
     VkPipelineExecutableInfoKHR pipeExecInfo = {
-        VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR, NULL, Unwrap(pipe), i,
+        VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR, NULL, Unwrap(pipe), i,
     };
 
     // enumerate statistics
@@ -1151,7 +1153,7 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
 
         if(idx == -1)
         {
-          RDCERR("Couldn't find offset for spec ID %u", s.specID);
+          RDCWARN("Couldn't find offset for spec ID %u", s.specID);
           continue;
         }
 
@@ -1375,6 +1377,34 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
       default: break;
     }
 
+    ret.rasterizer.pipelineShadingRate = {state.pipelineShadingRate.width,
+                                          state.pipelineShadingRate.height};
+
+    ShadingRateCombiner combiners[2] = {};
+    for(int i = 0; i < 2; i++)
+    {
+      switch(state.shadingRateCombiners[i])
+      {
+        default:
+        case VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR:
+          combiners[i] = ShadingRateCombiner::Keep;
+          break;
+        case VK_FRAGMENT_SHADING_RATE_COMBINER_OP_REPLACE_KHR:
+          combiners[i] = ShadingRateCombiner::Replace;
+          break;
+        case VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MIN_KHR:
+          combiners[i] = ShadingRateCombiner::Min;
+          break;
+        case VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MAX_KHR:
+          combiners[i] = ShadingRateCombiner::Max;
+          break;
+        case VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MUL_KHR:
+          combiners[i] = ShadingRateCombiner::Multiply;
+          break;
+      }
+    }
+    ret.rasterizer.shadingRateCombiners = {combiners[0], combiners[1]};
+
     ret.rasterizer.lineRasterMode = LineRaster::Default;
 
     // "VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT is equivalent to
@@ -1545,6 +1575,7 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
     rpState.suspended = dyn.suspended;
     rpState.resourceId = ResourceId();
     rpState.subpass = 0;
+    rpState.fragmentDensityOffsets.clear();
 
     fbState.resourceId = ResourceId();
     // dynamic rendering does not provide a framebuffer dimension, it's implicit from the image
@@ -1666,6 +1697,34 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
       rpState.fragmentDensityAttachment = -1;
     }
 
+    if(dyn.shadingRateView != VK_NULL_HANDLE)
+    {
+      fbState.attachments.push_back({});
+
+      ResourceId viewid = GetResID(dyn.shadingRateView);
+
+      fbState.attachments.back().viewResourceId = rm->GetOriginalID(viewid);
+      ret.currentPass.framebuffer.attachments[attIdx].imageResourceId =
+          rm->GetOriginalID(c.m_ImageView[viewid].image);
+
+      fbState.attachments.back().viewFormat = MakeResourceFormat(c.m_ImageView[viewid].format);
+      fbState.attachments.back().firstMip = c.m_ImageView[viewid].range.baseMipLevel;
+      fbState.attachments.back().firstSlice = c.m_ImageView[viewid].range.baseArrayLayer;
+      fbState.attachments.back().numMips = c.m_ImageView[viewid].range.levelCount;
+      fbState.attachments.back().numSlices = c.m_ImageView[viewid].range.layerCount;
+
+      Convert(fbState.attachments.back().swizzle, c.m_ImageView[viewid].componentMapping);
+
+      rpState.shadingRateAttachment = int32_t(attIdx++);
+      rpState.shadingRateTexelSize = {dyn.shadingRateTexelSize.width,
+                                      dyn.shadingRateTexelSize.height};
+    }
+    else
+    {
+      rpState.shadingRateAttachment = -1;
+      rpState.shadingRateTexelSize = {1, 1};
+    }
+
     rpState.multiviews.clear();
     for(uint32_t v = 0; v < 32; v++)
     {
@@ -1688,8 +1747,15 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
         c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].resolveAttachments;
     ret.currentPass.renderpass.depthstencilAttachment =
         c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].depthstencilAttachment;
+    ret.currentPass.renderpass.depthstencilResolveAttachment =
+        c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].depthstencilResolveAttachment;
     ret.currentPass.renderpass.fragmentDensityAttachment =
         c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].fragmentDensityAttachment;
+    ret.currentPass.renderpass.shadingRateAttachment =
+        c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].shadingRateAttachment;
+    VkExtent2D texelSize =
+        c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].shadingRateTexelSize;
+    ret.currentPass.renderpass.shadingRateTexelSize = {texelSize.width, texelSize.height};
 
     ret.currentPass.renderpass.multiviews =
         c.m_RenderPass[state.GetRenderPass()].subpasses[state.subpass].multiviews;
@@ -1747,6 +1813,13 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
       ret.currentPass.framebuffer.layers = 0;
     }
 
+    ret.currentPass.renderpass.fragmentDensityOffsets.resize(state.fragmentDensityMapOffsets.size());
+    for(size_t i = 0; i < state.fragmentDensityMapOffsets.size(); i++)
+    {
+      const VkOffset2D &o = state.fragmentDensityMapOffsets[i];
+      ret.currentPass.renderpass.fragmentDensityOffsets[i] = Offset(o.x, o.y);
+    }
+
     ret.currentPass.renderArea.x = state.renderArea.offset.x;
     ret.currentPass.renderArea.y = state.renderArea.offset.y;
     ret.currentPass.renderArea.width = state.renderArea.extent.width;
@@ -1759,8 +1832,12 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
     ret.currentPass.renderpass.inputAttachments.clear();
     ret.currentPass.renderpass.colorAttachments.clear();
     ret.currentPass.renderpass.resolveAttachments.clear();
+    ret.currentPass.renderpass.fragmentDensityOffsets.clear();
     ret.currentPass.renderpass.depthstencilAttachment = -1;
+    ret.currentPass.renderpass.depthstencilResolveAttachment = -1;
     ret.currentPass.renderpass.fragmentDensityAttachment = -1;
+    ret.currentPass.renderpass.shadingRateAttachment = -1;
+    ret.currentPass.renderpass.shadingRateTexelSize = {1, 1};
 
     ret.currentPass.framebuffer.resourceId = ResourceId();
     ret.currentPass.framebuffer.attachments.clear();
@@ -3213,6 +3290,7 @@ void VulkanReplay::GetTextureData(ResourceId tex, const Subresource &sub,
   VkImageView *tmpView = NULL;
   uint32_t numFBs = 0;
   VkRenderPass tmpRP = VK_NULL_HANDLE;
+  VkRenderPass tmpRPStencil = VK_NULL_HANDLE;
 
   VkDevice dev = m_pDriver->GetDev();
   VkCommandBuffer cmd = m_pDriver->GetNextCmd();
@@ -3246,8 +3324,15 @@ void VulkanReplay::GetTextureData(ResourceId tex, const Subresource &sub,
     // force readback texture to RGBA8 unorm
     if(params.remap == RemapTexture::RGBA8)
     {
-      imCreateInfo.format =
-          IsSRGBFormat(imCreateInfo.format) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+      if(IsSRGBFormat(imCreateInfo.format))
+      {
+        imCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+        renderFlags |= eTexDisplay_RemapSRGB;
+      }
+      else
+      {
+        imCreateInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+      }
     }
     else if(params.remap == RemapTexture::RGBA16)
     {
@@ -3301,6 +3386,8 @@ void VulkanReplay::GetTextureData(ResourceId tex, const Subresource &sub,
     wrappedTmpImage = tmpImage;
     GetResourceManager()->WrapResource(Unwrap(dev), wrappedTmpImage);
     tmpImageState = ImageState(wrappedTmpImage, ImageInfo(imCreateInfo), eFrameRef_None);
+
+    NameVulkanObject(wrappedTmpImage, "GetTextureData tmpImage");
 
     VkMemoryRequirements mrq = {0};
     vt->GetImageMemoryRequirements(Unwrap(dev), tmpImage, &mrq);
@@ -3434,6 +3521,8 @@ void VulkanReplay::GetTextureData(ResourceId tex, const Subresource &sub,
       vkr = vt->CreateImageView(Unwrap(dev), &viewInfo, NULL, &tmpView[i]);
       CheckVkResult(vkr);
 
+      NameUnwrappedVulkanObject(tmpView[i], "GetTextureData tmpView[i]");
+
       VkFramebufferCreateInfo fbinfo = {
           VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
           NULL,
@@ -3471,17 +3560,27 @@ void VulkanReplay::GetTextureData(ResourceId tex, const Subresource &sub,
       {
         viewInfo.format = GetViewCastedFormat(viewInfo.format, CompType::UInt);
 
+        attDesc.format = viewInfo.format;
+        vkr = vt->CreateRenderPass(Unwrap(dev), &rpinfo, NULL, &tmpRPStencil);
+        CheckVkResult(vkr);
+        fbinfo.renderPass = tmpRPStencil;
+        rpbegin.renderPass = tmpRPStencil;
+
         vkr = vt->CreateImageView(Unwrap(dev), &viewInfo, NULL, &tmpView[i + numFBs]);
         CheckVkResult(vkr);
+        NameUnwrappedVulkanObject(tmpView[i + numFBs], "GetTextureData tmpView[i]");
         fbinfo.pAttachments = &tmpView[i + numFBs];
         vkr = vt->CreateFramebuffer(Unwrap(dev), &fbinfo, NULL, &tmpFB[i + numFBs]);
         CheckVkResult(vkr);
         rpbegin.framebuffer = tmpFB[i + numFBs];
 
+        int stencilFlags = renderFlags;
+        stencilFlags &= ~eTexDisplay_RemapFloat;
+        stencilFlags &= ~eTexDisplay_RemapSRGB;
+        stencilFlags |= eTexDisplay_RemapUInt | eTexDisplay_GreenOnly;
+
         texDisplay.red = texDisplay.blue = texDisplay.alpha = false;
-        RenderTextureInternal(texDisplay, *srcImageState, rpbegin,
-                              (renderFlags & ~eTexDisplay_RemapFloat) | eTexDisplay_RemapUInt |
-                                  eTexDisplay_GreenOnly);
+        RenderTextureInternal(texDisplay, *srcImageState, rpbegin, stencilFlags);
         renderCount++;
       }
     }
@@ -3529,6 +3628,8 @@ void VulkanReplay::GetTextureData(ResourceId tex, const Subresource &sub,
     wrappedTmpImage = tmpImage;
     GetResourceManager()->WrapResource(Unwrap(dev), wrappedTmpImage);
     tmpImageState = ImageState(wrappedTmpImage, ImageInfo(imCreateInfo), eFrameRef_None);
+
+    NameVulkanObject(wrappedTmpImage, "GetTextureData tmpImage");
 
     VkMemoryRequirements mrq = {0};
     vt->GetImageMemoryRequirements(Unwrap(dev), tmpImage, &mrq);
@@ -3626,6 +3727,8 @@ void VulkanReplay::GetTextureData(ResourceId tex, const Subresource &sub,
     wrappedTmpImage = tmpImage;
     GetResourceManager()->WrapResource(Unwrap(dev), wrappedTmpImage);
     tmpImageState = ImageState(wrappedTmpImage, ImageInfo(imCreateInfo), eFrameRef_None);
+
+    NameVulkanObject(wrappedTmpImage, "GetTextureData tmpImage");
 
     VkMemoryRequirements mrq = {0};
     vt->GetImageMemoryRequirements(Unwrap(dev), tmpImage, &mrq);
@@ -3786,7 +3889,7 @@ void VulkanReplay::GetTextureData(ResourceId tex, const Subresource &sub,
   vt->GetBufferMemoryRequirements(Unwrap(dev), readbackBuf, &mrq);
 
   VkMemoryAllocateInfo allocInfo = {
-      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, dataSize,
+      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, mrq.size,
       m_pDriver->GetReadbackMemoryIndex(mrq.memoryTypeBits),
   };
 
@@ -4052,6 +4155,7 @@ void VulkanReplay::GetTextureData(ResourceId tex, const Subresource &sub,
     delete[] tmpFB;
     delete[] tmpView;
     vt->DestroyRenderPass(Unwrap(dev), tmpRP, NULL);
+    vt->DestroyRenderPass(Unwrap(dev), tmpRPStencil, NULL);
   }
 }
 

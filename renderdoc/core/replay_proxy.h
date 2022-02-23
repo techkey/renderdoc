@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  * Copyright (c) 2014 Crytek
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -430,7 +430,12 @@ public:
   {
     if(m_Proxy)
     {
-      EnsureTexCached(display.resourceId, display.typeCast, display.subresource);
+      Subresource customShaderSubresource = display.subresource;
+      // fetch all subsamples in case the custom shader wants to fetch more than simply the active
+      // subsample
+      customShaderSubresource.sample = ~0U;
+
+      EnsureTexCached(display.resourceId, display.typeCast, customShaderSubresource);
 
       if(display.resourceId == ResourceId())
         return ResourceId();

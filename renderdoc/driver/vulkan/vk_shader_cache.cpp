@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -909,6 +909,22 @@ void VulkanShaderCache::MakeGraphicsPipelineInfo(VkGraphicsPipelineCreateInfo &p
     ret.pNext = &discardRects;
   }
 
+  static VkPipelineFragmentShadingRateStateCreateInfoKHR shadingRate = {
+      VK_STRUCTURE_TYPE_PIPELINE_FRAGMENT_SHADING_RATE_STATE_CREATE_INFO_KHR,
+  };
+
+  if(pipeInfo.shadingRate.width != 1 || pipeInfo.shadingRate.height != 1 ||
+     pipeInfo.shadingRateCombiners[0] != VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR ||
+     pipeInfo.shadingRateCombiners[1] != VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR)
+  {
+    shadingRate.fragmentSize = pipeInfo.shadingRate;
+    shadingRate.combinerOps[0] = pipeInfo.shadingRateCombiners[0];
+    shadingRate.combinerOps[1] = pipeInfo.shadingRateCombiners[1];
+
+    shadingRate.pNext = ret.pNext;
+    ret.pNext = &shadingRate;
+  }
+
   // never create derivatives
   ret.flags &= ~VK_PIPELINE_CREATE_DERIVATIVE_BIT;
 
@@ -944,7 +960,7 @@ void VulkanShaderCache::MakeComputePipelineInfo(VkComputePipelineCreateInfo &pip
   stage.pName = pipeInfo.shaders[i].entryPoint.c_str();
   stage.pNext = NULL;
   stage.pSpecializationInfo = NULL;
-  stage.flags = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage.flags = 0;
 
   uint32_t dataOffset = 0;
 

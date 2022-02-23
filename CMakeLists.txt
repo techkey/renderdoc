@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 2.8.12)
 
 if(APPLE)
+  # Building for Apple requires at least CMake 3.20.0
+  cmake_minimum_required(VERSION 3.20.0)
+
   SET(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build architectures for Mac OS X" FORCE)
   SET(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum SDK for Mac OS X" FORCE)
   SET(CMAKE_XCODE_GENERATE_SCHEME ON)
@@ -180,6 +183,7 @@ option(ENABLE_GL "Enable GL driver" ON)
 option(ENABLE_GLES "Enable GL ES driver" ON)
 option(ENABLE_EGL "Enable EGL" ON)
 option(ENABLE_VULKAN "Enable Vulkan driver" ON)
+option(ENABLE_METAL "Enable Metal driver" OFF)
 option(ENABLE_RENDERDOCCMD "Enable renderdoccmd" ON)
 option(ENABLE_QRENDERDOC "Enable qrenderdoc" ON)
 option(ENABLE_PYRENDERDOC "Enable renderdoc python modules" ON)
@@ -192,6 +196,12 @@ option(ENABLE_GGP "Enable GGP support" OFF)
 option(ENABLE_ASAN "Enable address sanitizer" OFF)
 option(ENABLE_TSAN "Enable thread sanitizer" OFF)
 option(ENABLE_MSAN "Enable memory sanitizer" OFF)
+
+if(APPLE)
+  if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 12.0)
+    message(FATAL_ERROR "Xcode 12.2 or newer is required to build for Apple")
+  endif()
+endif()
 
 if(ENABLE_ASAN)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
@@ -318,6 +328,10 @@ endif()
 
 if(ENABLE_VULKAN)
     add_definitions(-DRENDERDOC_SUPPORT_VULKAN)
+endif()
+
+if(ENABLE_METAL)
+    add_definitions(-DRENDERDOC_SUPPORT_METAL)
 endif()
 
 string(TOLOWER "${CMAKE_BUILD_TYPE}" cmake_build_type_lower)
@@ -470,6 +484,10 @@ endif()
 
 if(ENABLE_VULKAN)
     message(STATUS "  - Vulkan")
+endif()
+
+if(ENABLE_METAL)
+    message(STATUS "  - Metal")
 endif()
 
 if(UNIX AND NOT ANDROID AND NOT APPLE AND NOT ENABLE_GGP)

@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -377,11 +377,11 @@ VulkanPipelineStateViewer::VulkanPipelineStateViewer(ICaptureContext &ctx,
     RDHeaderView *header = new RDHeaderView(Qt::Horizontal, this);
     ui->fbAttach->setHeader(header);
 
-    ui->fbAttach->setColumns({tr("Slot"), tr("Resource"), tr("Type"), tr("Width"), tr("Height"),
-                              tr("Depth"), tr("Array Size"), tr("Format"), tr("Go")});
-    header->setColumnStretchHints({2, 4, 2, 1, 1, 1, 1, 3, -1});
+    ui->fbAttach->setColumns(
+        {tr("Slot"), tr("Resource"), tr("Type"), tr("Dimensions"), tr("Format"), tr("Go")});
+    header->setColumnStretchHints({2, 4, 2, 2, 3, -1});
 
-    ui->fbAttach->setHoverIconColumn(8, action, action_hover);
+    ui->fbAttach->setHoverIconColumn(5, action, action_hover);
     ui->fbAttach->setClearSelectionOnFocusLoss(true);
     ui->fbAttach->setInstantTooltips(true);
 
@@ -593,7 +593,7 @@ template <typename bindType>
 bool VulkanPipelineStateViewer::setViewDetails(RDTreeWidgetItem *node, const bindType &view,
                                                TextureDescription *tex, bool stageBitsIncluded,
                                                const QString &hiddenCombinedSampler,
-                                               bool includeSampleLocations)
+                                               bool includeSampleLocations, bool includeOffsets)
 {
   if(tex == NULL)
     return false;
@@ -680,6 +680,21 @@ bool VulkanPipelineStateViewer::setViewDetails(RDTreeWidgetItem *node, const bin
     }
 
     viewdetails = true;
+  }
+
+  if(includeOffsets)
+  {
+    text += tr("Rendering with %1 offsets:\n")
+                .arg(state.currentPass.renderpass.fragmentDensityOffsets.size());
+    for(uint32_t j = 0; j < state.currentPass.renderpass.fragmentDensityOffsets.size(); j++)
+    {
+      const Offset &o = state.currentPass.renderpass.fragmentDensityOffsets[j];
+      if(j > 0)
+        text += tr(", ");
+
+      text += tr(" %1x%2").arg(o.x).arg(o.y);
+    }
+    text += lit("\n");
   }
 
   text = text.trimmed();
@@ -872,13 +887,15 @@ void VulkanPipelineStateViewer::clearState()
   ui->lineWidth->setText(lit("1.0"));
 
   ui->conservativeRaster->setText(tr("Disabled"));
-  ui->overestimationSize->setText(lit("0.0"));
   ui->multiview->setText(tr("Disabled"));
 
   ui->stippleFactor->setText(QString());
   ui->stippleFactor->setPixmap(cross);
   ui->stipplePattern->setText(QString());
   ui->stipplePattern->setPixmap(cross);
+
+  ui->pipelineShadingRate->setText(tr("1x1"));
+  ui->shadingRateCombiners->setText(tr("Keep, Keep"));
 
   ui->sampleCount->setText(lit("1"));
   ui->sampleShading->setPixmap(tick);
@@ -2470,9 +2487,10 @@ void VulkanPipelineStateViewer::setState()
   ui->rasterizerDiscard->setPixmap(state.rasterizer.rasterizerDiscardEnable ? tick : cross);
   ui->lineWidth->setText(Formatter::Format(state.rasterizer.lineWidth));
 
-  ui->conservativeRaster->setText(ToQStr(state.rasterizer.conservativeRasterization));
-  ui->overestimationSize->setText(
-      Formatter::Format(state.rasterizer.extraPrimitiveOverestimationSize));
+  QString conservRaster = ToQStr(state.rasterizer.conservativeRasterization);
+  if(state.rasterizer.conservativeRasterization == ConservativeRaster::Overestimate &&
+     state.rasterizer.extraPrimitiveOverestimationSize > 0.0f)
+    conservRaster += QFormatStr(" (+%1)").arg(state.rasterizer.extraPrimitiveOverestimationSize);
 
   if(state.rasterizer.lineStippleFactor == 0)
   {
@@ -2488,6 +2506,14 @@ void VulkanPipelineStateViewer::setState()
     ui->stipplePattern->setPixmap(QPixmap());
     ui->stipplePattern->setText(QString::number(state.rasterizer.lineStipplePattern, 2));
   }
+
+  ui->pipelineShadingRate->setText(QFormatStr("%1x%2")
+                                       .arg(state.rasterizer.pipelineShadingRate.first)
+                                       .arg(state.rasterizer.pipelineShadingRate.second));
+  ui->shadingRateCombiners->setText(
+      QFormatStr("%1, %2")
+          .arg(ToQStr(state.rasterizer.shadingRateCombiners.first, GraphicsAPI::Vulkan))
+          .arg(ToQStr(state.rasterizer.shadingRateCombiners.second, GraphicsAPI::Vulkan)));
 
   if(state.currentPass.renderpass.multiviews.isEmpty())
   {
@@ -2589,14 +2615,16 @@ void VulkanPipelineStateViewer::setState()
       bool filledSlot = (p.imageResourceId != ResourceId());
       bool usedSlot =
           (colIdx >= 0 || resIdx >= 0 || state.currentPass.renderpass.depthstencilAttachment == i ||
-           state.currentPass.renderpass.fragmentDensityAttachment == i);
+           state.currentPass.renderpass.fragmentDensityAttachment == i ||
+           state.currentPass.renderpass.shadingRateAttachment == i ||
+           state.currentPass.renderpass.depthstencilResolveAttachment == i);
 
       if(showNode(usedSlot, filledSlot))
       {
-        uint32_t w = 1, h = 1, d = 1;
-        uint32_t a = 1;
         QString format;
         QString typeName;
+        QString dimensions;
+        bool tooltipOffsets = false;
 
         if(p.imageResourceId != ResourceId())
         {
@@ -2607,16 +2635,18 @@ void VulkanPipelineStateViewer::setState()
         {
           format = lit("-");
           typeName = lit("-");
-          w = h = d = a = 0;
+          dimensions = lit("-");
         }
 
         TextureDescription *tex = m_Ctx.GetTexture(p.imageResourceId);
         if(tex)
         {
-          w = tex->width;
-          h = tex->height;
-          d = tex->depth;
-          a = tex->arraysize;
+          dimensions += tr("%1x%2").arg(tex->width).arg(tex->height);
+          if(tex->depth > 1)
+            dimensions += tr("x%1").arg(tex->depth);
+          if(tex->arraysize > 1)
+            dimensions += tr("[%1]").arg(tex->arraysize);
+
           typeName = ToQStr(tex->type);
         }
 
@@ -2630,6 +2660,7 @@ void VulkanPipelineStateViewer::setState()
                         .arg(ToQStr(p.swizzle.alpha));
         }
 
+        rdcpair<uint32_t, uint32_t> shadingRateTexelSize = {0, 0};
         QString slotname;
 
         if(colIdx >= 0)
@@ -2640,9 +2671,34 @@ void VulkanPipelineStateViewer::setState()
         {
           slotname = QFormatStr("Resolve %1").arg(resIdx);
         }
+        else if(state.currentPass.renderpass.depthstencilResolveAttachment == i)
+        {
+          slotname = lit("Depth/Stencil Resolve");
+        }
         else if(state.currentPass.renderpass.fragmentDensityAttachment == i)
         {
           slotname = lit("Fragment Density Map");
+          if(state.currentPass.renderpass.fragmentDensityOffsets.size() > 2)
+          {
+            tooltipOffsets = true;
+          }
+          else if(state.currentPass.renderpass.fragmentDensityOffsets.size() > 0)
+          {
+            dimensions += tr(" : offsets");
+            for(uint32_t j = 0; j < state.currentPass.renderpass.fragmentDensityOffsets.size(); j++)
+            {
+              const Offset &o = state.currentPass.renderpass.fragmentDensityOffsets[j];
+              if(j > 0)
+                dimensions += tr(", ");
+
+              dimensions += tr(" %1x%2").arg(o.x).arg(o.y);
+            }
+          }
+        }
+        else if(state.currentPass.renderpass.shadingRateAttachment == i)
+        {
+          slotname = lit("Fragment Shading Rate Map");
+          shadingRateTexelSize = state.currentPass.renderpass.shadingRateTexelSize;
         }
         else
         {
@@ -2676,8 +2732,14 @@ void VulkanPipelineStateViewer::setState()
           }
         }
 
-        RDTreeWidgetItem *node = new RDTreeWidgetItem(
-            {slotname, p.imageResourceId, typeName, w, h, d, a, format, QString()});
+        QString resName = ToQStr(p.imageResourceId);
+
+        if(shadingRateTexelSize.first > 0)
+          resName +=
+              tr(" (%1x%2 texels)").arg(shadingRateTexelSize.first).arg(shadingRateTexelSize.second);
+
+        RDTreeWidgetItem *node =
+            new RDTreeWidgetItem({slotname, resName, typeName, dimensions, format, QString()});
 
         if(tex)
           node->setTag(
@@ -2696,7 +2758,8 @@ void VulkanPipelineStateViewer::setState()
           targets[i] = true;
         }
 
-        bool hasViewDetails = setViewDetails(node, p, tex, true, QString(), resIdx < 0);
+        bool hasViewDetails =
+            setViewDetails(node, p, tex, true, QString(), resIdx < 0, tooltipOffsets);
 
         if(hasViewDetails)
           node->setText(
@@ -3982,17 +4045,19 @@ void VulkanPipelineStateViewer::exportHTML(QXmlStreamWriter &xml, const VKPipe::
 
       QString name = m_Ctx.GetResourceName(a.imageResourceId);
 
-      rows.push_back({i, name, a.firstMip, a.numMips, a.firstSlice, a.numSlices});
+      rows.push_back({i, name, tex->width, tex->height, tex->depth, tex->arraysize, a.firstMip,
+                      a.numMips, a.firstSlice, a.numSlices});
 
       i++;
     }
 
-    m_Common.exportHTMLTable(xml,
-                             {
-                                 tr("Slot"), tr("Image"), tr("First mip"), tr("Number of mips"),
-                                 tr("First array layer"), tr("Number of layers"),
-                             },
-                             rows);
+    m_Common.exportHTMLTable(
+        xml,
+        {
+            tr("Slot"), tr("Image"), tr("Width"), tr("Height"), tr("Depth"), tr("Array Size"),
+            tr("First mip"), tr("Number of mips"), tr("First array layer"), tr("Number of layers"),
+        },
+        rows);
   }
 
   {
@@ -4034,6 +4099,23 @@ void VulkanPipelineStateViewer::exportHTML(QXmlStreamWriter &xml, const VKPipe::
       xml.writeEndElement();
     }
 
+    if(!pass.renderpass.resolveAttachments.isEmpty())
+    {
+      QList<QVariantList> resolves;
+
+      for(int i = 0; i < pass.renderpass.resolveAttachments.count(); i++)
+        resolves.push_back({pass.renderpass.resolveAttachments[i]});
+
+      m_Common.exportHTMLTable(xml,
+                               {
+                                   tr("Resolve Attachment"),
+                               },
+                               resolves);
+
+      xml.writeStartElement(lit("p"));
+      xml.writeEndElement();
+    }
+
     if(pass.renderpass.depthstencilAttachment >= 0)
     {
       xml.writeStartElement(lit("p"));
@@ -4042,11 +4124,42 @@ void VulkanPipelineStateViewer::exportHTML(QXmlStreamWriter &xml, const VKPipe::
       xml.writeEndElement();
     }
 
+    if(pass.renderpass.depthstencilResolveAttachment >= 0)
+    {
+      xml.writeStartElement(lit("p"));
+      xml.writeCharacters(tr("Depth-stencil Resolve Attachment: %1")
+                              .arg(pass.renderpass.depthstencilResolveAttachment));
+      xml.writeEndElement();
+    }
+
     if(pass.renderpass.fragmentDensityAttachment >= 0)
     {
       xml.writeStartElement(lit("p"));
       xml.writeCharacters(
           tr("Fragment Density Attachment: %1").arg(pass.renderpass.fragmentDensityAttachment));
+      if(pass.renderpass.fragmentDensityOffsets.size() > 0)
+      {
+        xml.writeCharacters(
+            tr(". Rendering with %1 offsets : ").arg(pass.renderpass.fragmentDensityOffsets.size()));
+        for(uint32_t j = 0; j < pass.renderpass.fragmentDensityOffsets.size(); j++)
+        {
+          const Offset &o = pass.renderpass.fragmentDensityOffsets[j];
+          if(j > 0)
+            xml.writeCharacters(tr(", "));
+
+          xml.writeCharacters(tr(" %1x%2").arg(o.x).arg(o.y));
+        }
+      }
+      xml.writeEndElement();
+    }
+
+    if(pass.renderpass.shadingRateAttachment >= 0)
+    {
+      xml.writeStartElement(lit("p"));
+      xml.writeCharacters(tr("Fragment Shading Rate Attachment: %1 (texel size %2x%3)")
+                              .arg(pass.renderpass.shadingRateAttachment)
+                              .arg(pass.renderpass.shadingRateTexelSize.first)
+                              .arg(pass.renderpass.shadingRateTexelSize.second));
       xml.writeEndElement();
     }
   }

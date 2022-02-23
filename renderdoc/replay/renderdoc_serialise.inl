@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2017-2021 Baldur Karlsson
+ * Copyright (c) 2017-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -811,6 +811,15 @@ void DoSerialise(SerialiserType &ser, MeshFormat &el)
   SERIALISE_MEMBER(showAlpha);
 
   SIZE_CHECK(128);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, Offset &el)
+{
+  SERIALISE_MEMBER(x);
+  SERIALISE_MEMBER(y);
+
+  SIZE_CHECK(8);
 }
 
 template <typename SerialiserType>
@@ -2143,7 +2152,10 @@ void DoSerialise(SerialiserType &ser, VKPipe::Rasterizer &el)
   SERIALISE_MEMBER(lineStippleFactor);
   SERIALISE_MEMBER(lineStipplePattern);
 
-  SIZE_CHECK(52);
+  SERIALISE_MEMBER(pipelineShadingRate);
+  SERIALISE_MEMBER(shadingRateCombiners);
+
+  SIZE_CHECK(68);
 }
 
 template <typename SerialiserType>
@@ -2209,10 +2221,14 @@ void DoSerialise(SerialiserType &ser, VKPipe::RenderPass &el)
   SERIALISE_MEMBER(colorAttachments);
   SERIALISE_MEMBER(resolveAttachments);
   SERIALISE_MEMBER(depthstencilAttachment);
+  SERIALISE_MEMBER(depthstencilResolveAttachment);
   SERIALISE_MEMBER(fragmentDensityAttachment);
+  SERIALISE_MEMBER(shadingRateAttachment);
+  SERIALISE_MEMBER(shadingRateTexelSize);
   SERIALISE_MEMBER(multiviews);
+  SERIALISE_MEMBER(fragmentDensityOffsets);
 
-  SIZE_CHECK(120);
+  SIZE_CHECK(160);
 }
 
 template <typename SerialiserType>
@@ -2262,7 +2278,7 @@ void DoSerialise(SerialiserType &ser, VKPipe::CurrentPass &el)
   SERIALISE_MEMBER(framebuffer);
   SERIALISE_MEMBER(renderArea);
 
-  SIZE_CHECK(184);
+  SIZE_CHECK(224);
 }
 
 template <typename SerialiserType>
@@ -2330,7 +2346,7 @@ void DoSerialise(SerialiserType &ser, VKPipe::State &el)
 
   SERIALISE_MEMBER(conditionalRendering);
 
-  SIZE_CHECK(2008);
+  SIZE_CHECK(2064);
 }
 
 #pragma endregion Vulkan pipeline state
@@ -2385,6 +2401,7 @@ INSTANTIATE_SERIALISE_TYPE(FrameDescription)
 INSTANTIATE_SERIALISE_TYPE(FrameRecord)
 INSTANTIATE_SERIALISE_TYPE(MeshFormat)
 INSTANTIATE_SERIALISE_TYPE(FloatVector)
+INSTANTIATE_SERIALISE_TYPE(Offset);
 INSTANTIATE_SERIALISE_TYPE(Uuid)
 INSTANTIATE_SERIALISE_TYPE(CounterDescription)
 INSTANTIATE_SERIALISE_TYPE(PixelValue)

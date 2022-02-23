@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -228,6 +228,7 @@ struct Formatter
   static void shutdown();
 
   static QString Format(double f, bool hex = false);
+  static QString Format(rdhalf f, bool hex = false) { return Format((float)f, hex); }
   static QString HumanFormat(uint64_t u);
   static QString Format(uint64_t u, bool hex = false)
   {

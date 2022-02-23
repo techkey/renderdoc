@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -34,6 +34,7 @@
 #include <QToolTip>
 #include "Code/Resources.h"
 #include "Code/ScintillaSyntax.h"
+#include "Widgets/Extended/RDLabel.h"
 #include "Widgets/FindReplace.h"
 #include "scintilla/include/SciLexer.h"
 #include "scintilla/include/qt/ScintillaEdit.h"
@@ -889,8 +890,41 @@ void ShaderViewer::debugShader(const ShaderBindpointMapping *bind, const ShaderR
         // source file, the second time jumps to it.
         if(preferSourceDebug)
         {
-          gotoSourceDebugging();
-          updateDebugState();
+          // if we're not on a source line, move forward to the first source line
+          while(!m_CurInstructionScintilla)
+          {
+            do
+            {
+              applyForwardsChange();
+
+              if(m_Trace->lineInfo[GetCurrentState().nextInstruction].fileIndex >= 0)
+                break;
+
+              if(IsLastState())
+                break;
+
+            } while(true);
+
+            updateDebugState();
+
+            if(IsLastState())
+              break;
+          }
+
+          // if we got to the last state something's wrong - we're preferring source debug but we
+          // didn't ever reach an instruction mapped to source lines? just reverse course and don't
+          // switch to source debugging
+          if(IsLastState())
+          {
+            m_FirstSourceStateIdx = ~0U;
+            runTo({}, false);
+          }
+          else
+          {
+            m_FirstSourceStateIdx = m_CurrentStateIdx;
+            gotoSourceDebugging();
+            updateDebugState();
+          }
         }
 
         m_DeferredInit = false;
@@ -1524,7 +1558,35 @@ void ShaderViewer::variables_contextMenu(const QPoint &pos)
   QAction copyValue(tr("Copy"), this);
   QAction addWatch(tr("Add Watch"), this);
   QAction deleteWatch(tr("Delete Watch"), this);
+  QMenu interpretMenu(tr("Interpret As..."), this);
   QAction clearAll(tr("Clear All"), this);
+
+  QAction interpDefault(tr("Default"), this);
+  QAction interpFloat(tr("Floating point"), this);
+  QAction interpSInt(tr("Signed decimal"), this);
+  QAction interpUInt(tr("Unsigned decimal"), this);
+  QAction interpHex(tr("Unsigned hexadecimal"), this);
+  QAction interpOctal(tr("Unsigned octal"), this);
+  QAction interpBinary(tr("Unsigned binary"), this);
+  QAction interpColor(tr("Float RGB color"), this);
+
+  interpDefault.setCheckable(true);
+  interpFloat.setCheckable(true);
+  interpSInt.setCheckable(true);
+  interpUInt.setCheckable(true);
+  interpHex.setCheckable(true);
+  interpOctal.setCheckable(true);
+  interpBinary.setCheckable(true);
+  interpColor.setCheckable(true);
+
+  interpretMenu.addAction(&interpDefault);
+  interpretMenu.addAction(&interpFloat);
+  interpretMenu.addAction(&interpSInt);
+  interpretMenu.addAction(&interpUInt);
+  interpretMenu.addAction(&interpHex);
+  interpretMenu.addAction(&interpOctal);
+  interpretMenu.addAction(&interpBinary);
+  interpretMenu.addAction(&interpColor);
 
   contextMenu.addAction(&copyValue);
   contextMenu.addSeparator();
@@ -1534,6 +1596,7 @@ void ShaderViewer::variables_contextMenu(const QPoint &pos)
   {
     QObject::connect(&copyValue, &QAction::triggered, [this] { ui->watch->copySelection(); });
 
+    contextMenu.addMenu(&interpretMenu);
     contextMenu.addAction(&deleteWatch);
     contextMenu.addSeparator();
     contextMenu.addAction(&clearAll);
@@ -1559,8 +1622,64 @@ void ShaderViewer::variables_contextMenu(const QPoint &pos)
     }
 
     // if we have a selected row that isn't the last one, we can add/delete this item
+    interpretMenu.setEnabled(selRow >= 0 && selRow < ui->watch->rowCount() - 1);
     deleteWatch.setEnabled(selRow >= 0 && selRow < ui->watch->rowCount() - 1);
     addWatch.setEnabled(selRow >= 0 && selRow < ui->watch->rowCount() - 1);
+
+    {
+      QTableWidgetItem *item = ui->watch->item(selRow, 0);
+      QTableWidgetItem *regNames = ui->watch->item(selRow, 1);
+
+      if(regNames->data(Qt::UserRole) == 1)
+      {
+        QString baseUninterpText = item->text();
+        int comma = baseUninterpText.lastIndexOf(QLatin1Char(','));
+
+        if(comma < 0)
+        {
+          interpDefault.setChecked(true);
+        }
+        else
+        {
+          QChar interp = baseUninterpText[comma + 1];
+          baseUninterpText = baseUninterpText.left(comma);
+
+          if(interp == QLatin1Char('f'))
+            interpFloat.setChecked(true);
+          else if(interp == QLatin1Char('c'))
+            interpColor.setChecked(true);
+          else if(interp == QLatin1Char('d') || interp == QLatin1Char('i'))
+            interpSInt.setChecked(true);
+          else if(interp == QLatin1Char('u'))
+            interpUInt.setChecked(true);
+          else if(interp == QLatin1Char('x'))
+            interpHex.setChecked(true);
+          else if(interp == QLatin1Char('o'))
+            interpOctal.setChecked(true);
+          else if(interp == QLatin1Char('b'))
+            interpBinary.setChecked(true);
+        }
+
+        QObject::connect(&interpFloat, &QAction::triggered,
+                         [item, baseUninterpText] { item->setText(baseUninterpText + lit(",f")); });
+        QObject::connect(&interpColor, &QAction::triggered,
+                         [item, baseUninterpText] { item->setText(baseUninterpText + lit(",c")); });
+        QObject::connect(&interpSInt, &QAction::triggered,
+                         [item, baseUninterpText] { item->setText(baseUninterpText + lit(",i")); });
+        QObject::connect(&interpUInt, &QAction::triggered,
+                         [item, baseUninterpText] { item->setText(baseUninterpText + lit(",u")); });
+        QObject::connect(&interpHex, &QAction::triggered,
+                         [item, baseUninterpText] { item->setText(baseUninterpText + lit(",x")); });
+        QObject::connect(&interpOctal, &QAction::triggered,
+                         [item, baseUninterpText] { item->setText(baseUninterpText + lit(",o")); });
+        QObject::connect(&interpBinary, &QAction::triggered,
+                         [item, baseUninterpText] { item->setText(baseUninterpText + lit(",b")); });
+      }
+      else
+      {
+        interpretMenu.setEnabled(false);
+      }
+    }
 
     QObject::connect(&addWatch, &QAction::triggered, [this, selRow] {
       QTableWidgetItem *item = ui->watch->item(selRow, 0);
@@ -1810,8 +1929,12 @@ void ShaderViewer::on_watch_itemChanged(QTableWidgetItem *item)
      !ui->watch->item(ui->watch->rowCount() - 1, 0)->text().isEmpty())
   {
     // add a new row if needed
+    bool newRow = false;
     if(ui->watch->rowCount() == 0 || ui->watch->item(ui->watch->rowCount() - 1, 0) != NULL)
+    {
+      newRow = true;
       ui->watch->insertRow(ui->watch->rowCount());
+    }
 
     for(int i = 0; i < ui->watch->columnCount(); i++)
     {
@@ -1819,6 +1942,9 @@ void ShaderViewer::on_watch_itemChanged(QTableWidgetItem *item)
       if(i > 0)
         newItem->setFlags(newItem->flags() & ~Qt::ItemIsEditable);
       ui->watch->setItem(ui->watch->rowCount() - 1, i, newItem);
+      newItem->setData(Qt::UserRole, 0);
+      if(i == 0 && newRow)
+        ui->watch->setCurrentItem(newItem);
     }
   }
 
@@ -1835,6 +1961,10 @@ bool ShaderViewer::step(bool forward, StepMode mode)
     return false;
 
   if((forward && IsLastState()) || (!forward && IsFirstState()))
+    return false;
+
+  // also stop if we reach the first real source-mapped instruction, while source debugging
+  if(!forward && isSourceDebugging() && m_CurrentStateIdx == m_FirstSourceStateIdx)
     return false;
 
   if(isSourceDebugging())
@@ -1858,40 +1988,59 @@ bool ShaderViewer::step(bool forward, StepMode mode)
       if((forward && IsLastState()) || (!forward && IsFirstState()))
         break;
 
+      // also stop if we reach the first real source-mapped instruction, while source debugging
+      if(!forward && isSourceDebugging() && m_CurrentStateIdx == m_FirstSourceStateIdx)
+        break;
+
       // keep going if we're still on the same source line as we started
       LineColumnInfo curLine = m_Trace->lineInfo[GetCurrentState().nextInstruction];
       if(curLine.SourceEqual(oldLine))
         continue;
 
-      // if we're stepping into, break now as soon as we hit a different line
+      // if we're in an invalid file, skip it as unmapped instructions
+      if(curLine.fileIndex == -1)
+        continue;
+
+      // we're on a different line so we can probably stop, but that might not be enough for Step
+      // Out or Step Over
+      rdcarray<rdcstr> curStack = GetCurrentState().callstack;
+
+      // first/last instruction may not have a stack - treat any change from no stack to stack as
+      // hitting the step condition
+      if(oldStack.empty() || curStack.empty())
+        break;
+
+      // if we're stepping into, any line different from the previous is sufficient to stop stepping
       if(mode == StepInto)
         break;
 
-      // we're on a different line but that might not be enough for Step Out or Step Over
-      rdcarray<rdcstr> curStack = GetCurrentState().callstack;
+      // if the stack has shrunk we must have exited the function, don't continue stepping
+      if(curStack.size() < oldStack.size())
+        break;
 
-      // mode is StepOver or StepOut
-
-      if(mode == StepOver)
+      // if the stack is identical we haven't left this function (to our knowledge. We can't
+      // differentiate between inlining causing us to immediately jump back into this function, a
+      // kind of A-B-A problem, but there's not much we can do about that here.
+      if(curStack == oldStack)
       {
-        // if the stack hasn't grown, we assume that we're still in the same function so return
-        if(curStack.size() <= oldStack.size())
+        // if we're stepping over, we can stop stepping now as we've gotten to a different line in
+        // the same function without going into a new one
+        if(mode == StepOver)
           break;
+
+        // if we're stepping out keep going - we want to leave this function.
+        if(mode == StepOut)
+          continue;
       }
 
-      if(mode == StepOut)
-      {
-        // if the stack has shrunk we must have exited the function
-        if(curStack.size() < oldStack.size())
-          break;
-      }
-
-      // if the stack is bigger (for stepover) or hasn't shrunk (for stepout) but the common subset
-      // is different, we have stepped into a different function due to inlining, so break
+      // if the stack common subset is different, we have stepped into a different function due to
+      // inlining, so stop stepping. This covers the case where StepOut hasn't seen a stack shrink
+      // yet as well as StepOver where the stack has grown but now has a different root from when we
+      // started.
       //
-      // E.g. A() -> B() stepover A() -> C() -> D()
+      // E.g. A() -> B() StepOver A() -> C() -> D()
       //
-      // Or A() -> B() stepout A() -> C()
+      // Or A() -> B() StepOut A() -> C()
       bool different = false;
       for(size_t i = 0; i < qMin(curStack.size(), oldStack.size()); i++)
       {
@@ -1904,6 +2053,9 @@ bool ShaderViewer::step(bool forward, StepMode mode)
 
       if(different)
         break;
+
+      // otherwise we either went into a bigger callstack and continue stepping over it, or else we
+      // haven't yet stepped out of the callstack that we started in
 
     } while(true);
 
@@ -2068,6 +2220,9 @@ void ShaderViewer::runTo(QVector<size_t> runToInstruction, bool forward, ShaderE
     else
     {
       if(IsFirstState())
+        break;
+      // also stop if we reach the first real source-mapped instruction, while source debugging
+      if(isSourceDebugging() && m_CurrentStateIdx == m_FirstSourceStateIdx)
         break;
       applyBackwardsChange();
     }
@@ -2593,6 +2748,10 @@ bool ShaderViewer::getVar(RDTreeWidgetItem *item, ShaderVariable *var, QString *
 
       const QString xyzw = lit("xyzw");
 
+      size_t dataSize = VarTypeByteSize(ret.type);
+      if(dataSize == 0)
+        dataSize = 4;
+
       for(uint32_t i = 0; i < mapping.variables.size(); i++)
       {
         const DebugVariableReference &r = mapping.variables[i];
@@ -2628,10 +2787,14 @@ bool ShaderViewer::getVar(RDTreeWidgetItem *item, ShaderVariable *var, QString *
             }
           }
 
-          if(mapping.type == VarType::Double || mapping.type == VarType::ULong)
+          if(dataSize == 8)
             ret.value.u64v[i] = reg->value.u64v[r.component];
-          else
+          else if(dataSize == 4)
             ret.value.u32v[i] = reg->value.u32v[r.component];
+          else if(dataSize == 2)
+            ret.value.u16v[i] = reg->value.u16v[r.component];
+          else
+            ret.value.u8v[i] = reg->value.u8v[r.component];
         }
         else
         {
@@ -2886,7 +3049,7 @@ void ShaderViewer::updateDebugState()
 
   if(state.nextInstruction < m_Trace->lineInfo.size())
   {
-    LineColumnInfo &lineInfo = m_Trace->lineInfo[state.nextInstruction];
+    LineColumnInfo lineInfo = m_Trace->lineInfo[state.nextInstruction];
 
     // highlight the current line
     {
@@ -2899,6 +3062,19 @@ void ShaderViewer::updateDebugState()
       m_DisassemblyView->setSelection(pos, pos);
 
       ensureLineScrolled(m_DisassemblyView, lineInfo.disassemblyLine - 1);
+    }
+
+    if(IsLastState() && (lineInfo.fileIndex < 0 || lineInfo.fileIndex >= m_FileScintillas.count()))
+    {
+      // if the last state doesn't have source mapping information, display the line info for the
+      // last state which did.
+      for(int stateLookbackIdx = (int)m_CurrentStateIdx; stateLookbackIdx > 0; stateLookbackIdx--)
+      {
+        lineInfo = m_Trace->lineInfo[m_States[stateLookbackIdx].nextInstruction];
+
+        if(lineInfo.fileIndex >= 0 && lineInfo.fileIndex < m_FileScintillas.count())
+          break;
+      }
     }
 
     if(lineInfo.fileIndex >= 0 && lineInfo.fileIndex < m_FileScintillas.count())
@@ -3393,7 +3569,7 @@ void ShaderViewer::updateWatchVariables()
             "(\\[[0-9]+\\])?"           // a literal-indexed array expression
             "\\.?"                      // optional struct dot
             ")+)"                       // 1 or more chained identifiers
-            "(,[xfiudb])?"              // optional typecast
+            "(,[iduxbocf])?"            // optional typecast
             "$"));                      // end of the line
 
     QRegularExpression identifierSliceRE(
@@ -3404,7 +3580,7 @@ void ShaderViewer::updateWatchVariables()
             "(\\[[0-9]+\\])"             // or a literal-indexed array expression
             ")"));                       // end capture
 
-    QRegularExpression swizzleRE(lit("^\\.[xyzwrgba]+$"));
+    QRegularExpression swizzleRE(lit("^\\.?[xyzwrgba]+$"));
 
     QRegularExpressionMatch match = exprRE.match(expr);
 
@@ -3475,7 +3651,9 @@ void ShaderViewer::updateWatchVariables()
             // member
             if(swizzleRE.match(identifier).hasMatch() && identifiers.isEmpty())
             {
-              swizzle = identifier.mid(1);
+              swizzle = identifier;
+              if(swizzle[0] == QLatin1Char('.'))
+                swizzle = swizzle.mid(1);
               break;
             }
 
@@ -3500,24 +3678,47 @@ void ShaderViewer::updateWatchVariables()
             if(swizzle.isEmpty())
               swizzle = lit("xyzw").left((int)var.columns);
 
+            size_t dataSize = VarTypeByteSize(var.type);
+
+            if(var.type == VarType::Unknown || dataSize == 0)
+              dataSize = 4;
+
             if(regcast == QLatin1Char(' '))
             {
-              if(var.type == VarType::Double)
-                regcast = QLatin1Char('d');
-              else if(var.type == VarType::Float || var.type == VarType::Half)
-                regcast = QLatin1Char('f');
-              else if(var.type == VarType::ULong || var.type == VarType::UInt ||
-                      var.type == VarType::UShort || var.type == VarType::UByte)
-                regcast = QLatin1Char('u');
-              else if(var.type == VarType::SLong || var.type == VarType::SInt ||
-                      var.type == VarType::SShort || var.type == VarType::SByte ||
-                      var.type == VarType::Bool)
-                regcast = QLatin1Char('i');
-              else if(var.type == VarType::Unknown)
-                regcast = ui->intView->isChecked() ? QLatin1Char('i') : QLatin1Char('f');
+              switch(var.type)
+              {
+                case VarType::Float:
+                case VarType::Double:
+                case VarType::Half: regcast = QLatin1Char('f'); break;
+                case VarType::Bool:
+                case VarType::ULong:
+                case VarType::UInt:
+                case VarType::UShort:
+                case VarType::UByte: regcast = QLatin1Char('u'); break;
+                case VarType::SLong:
+                case VarType::SInt:
+                case VarType::SShort:
+                case VarType::SByte: regcast = QLatin1Char('i'); break;
+                case VarType::GPUPointer:
+                  regcast = QLatin1Char('#');
+                  dataSize = 8;
+                  break;
+                case VarType::ConstantBlock:
+                case VarType::ReadOnlyResource:
+                case VarType::ReadWriteResource:
+                case VarType::Sampler:
+                  regcast = QLatin1Char('#');
+                  dataSize = 4;
+                  break;
+                case VarType::Unknown:
+                  regcast = ui->intView->isChecked() ? QLatin1Char('i') : QLatin1Char('f');
+                  dataSize = 4;
+                  break;
+              }
             }
 
             QString val;
+            QString swatchColor;
 
             for(int s = 0; s < swizzle.count(); s++)
             {
@@ -3533,29 +3734,72 @@ void ShaderViewer::updateWatchVariables()
               if(swiz == QLatin1Char('w') || swiz == QLatin1Char('a'))
                 elindex = 3;
 
-              if(regcast == QLatin1Char('i'))
+              ShaderValue value = {};
+              memcpy(&value, var.value.u8v.data() + elindex * dataSize, dataSize);
+
+              if(regcast == QLatin1Char('#'))
               {
-                val += Formatter::Format(var.value.s32v[elindex]);
+                if(var.type == VarType::GPUPointer)
+                  val += ToQStr(var.GetPointer());
+                else
+                  val += stringRep(var, 0);
               }
-              else if(regcast == QLatin1Char('f'))
+              else if(regcast == QLatin1Char('i') || regcast == QLatin1Char('d'))
               {
-                val += Formatter::Format(var.value.f32v[elindex]);
+                if(dataSize == 8)
+                  val += Formatter::Format(value.s64v[0]);
+                else if(dataSize == 4)
+                  val += Formatter::Format(value.s32v[0]);
+                else if(dataSize == 2)
+                  val += Formatter::Format(value.s16v[0]);
+                else
+                  val += Formatter::Format(value.s8v[0]);
+              }
+              else if(regcast == QLatin1Char('f') || regcast == QLatin1Char('c'))
+              {
+                float f;
+
+                if(dataSize == 8)
+                {
+                  val += Formatter::Format(value.f64v[0]);
+                  f = (float)value.f64v[0];
+                }
+                else if(dataSize == 4)
+                {
+                  val += Formatter::Format(value.f32v[0]);
+                  f = (float)value.f32v[0];
+                }
+                else
+                {
+                  val += Formatter::Format(value.f16v[0]);
+                  f = (float)value.f16v[0];
+                }
+
+                if(regcast == QLatin1Char('c') && s < 3)
+                  swatchColor += Formatter::Format(uint8_t(qBound(0.0f, f, 1.0f) * 255.0f), true);
               }
               else if(regcast == QLatin1Char('u'))
               {
-                val += Formatter::Format(var.value.u32v[elindex]);
+                val += Formatter::Format(value.u64v[0]);
               }
               else if(regcast == QLatin1Char('x'))
               {
-                val += Formatter::Format(var.value.u32v[elindex], true);
+                if(dataSize == 8)
+                  val += Formatter::Format(value.u64v[0], true);
+                else if(dataSize == 4)
+                  val += Formatter::Format(value.u32v[0], true);
+                else if(dataSize == 2)
+                  val += Formatter::Format(value.u16v[0], true);
+                else
+                  val += Formatter::Format(value.u8v[0], true);
               }
               else if(regcast == QLatin1Char('b'))
               {
-                val += QFormatStr("%1").arg(var.value.u32v[elindex], 32, 2, QLatin1Char('0'));
+                val += QFormatStr("%1").arg(value.u64v[0], (int)dataSize * 8, 2, QLatin1Char('0'));
               }
-              else if(regcast == QLatin1Char('d'))
+              else if(regcast == QLatin1Char('o'))
               {
-                val += Formatter::Format(var.value.f64v[elindex]);
+                val += QFormatStr("0%1").arg(value.u64v[0], 0, 8, QLatin1Char('0'));
               }
 
               if(s < swizzle.count() - 1)
@@ -3564,16 +3808,33 @@ void ShaderViewer::updateWatchVariables()
 
             item = new QTableWidgetItem(regNames);
             item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+            item->setData(Qt::UserRole, 1);
             ui->watch->setItem(i, 1, item);
 
             item = new QTableWidgetItem(TypeString(var));
             item->setFlags(item->flags() & ~Qt::ItemIsEditable);
             ui->watch->setItem(i, 2, item);
 
+            if(swatchColor.isEmpty())
+            {
+              ui->watch->setCellWidget(i, 3, NULL);
+            }
+            else
+            {
+              if(swatchColor.size() < 6)
+                swatchColor.resize(6, QLatin1Char('0'));
+              RDLabel *lab = new RDLabel();
+              lab->setText(lit("<rdhtml>"
+                               "<div style='margin-left:1em;background-color:#%1'></div>"
+                               "</rdhtml>")
+                               .arg(swatchColor));
+              val = lit("     ") + val;
+              ui->watch->setCellWidget(i, 3, lab);
+            }
+
             item = new QTableWidgetItem(val);
             item->setData(Qt::UserRole, node->tag());
             item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-
             ui->watch->setItem(i, 3, item);
 
             // success! continue
@@ -3590,6 +3851,7 @@ void ShaderViewer::updateWatchVariables()
     // if we got here, something went wrong.
     item = new QTableWidgetItem();
     item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+    item->setData(Qt::UserRole, 0);
     ui->watch->setItem(i, 1, item);
 
     item = new QTableWidgetItem();
@@ -3610,16 +3872,7 @@ RDTreeWidgetItem *ShaderViewer::makeSourceVariableNode(const ShaderVariable &var
 {
   QString typeName;
 
-  if(var.type == VarType::UInt)
-    typeName = lit("uint");
-  else if(var.type == VarType::SInt)
-    typeName = lit("int");
-  else if(var.type == VarType::Float)
-    typeName = lit("float");
-  else if(var.type == VarType::Double)
-    typeName = lit("double");
-  else if(var.type == VarType::Bool)
-    typeName = lit("bool");
+  typeName = ToQStr(var.type);
 
   QString rowTypeName = typeName;
 
@@ -3673,16 +3926,7 @@ RDTreeWidgetItem *ShaderViewer::makeSourceVariableNode(const SourceVariableMappi
   QString regNames, typeName;
   QString value;
 
-  if(l.type == VarType::UInt)
-    typeName = lit("uint");
-  else if(l.type == VarType::SInt)
-    typeName = lit("int");
-  else if(l.type == VarType::Float)
-    typeName = lit("float");
-  else if(l.type == VarType::Double)
-    typeName = lit("double");
-  else if(l.type == VarType::Bool)
-    typeName = lit("bool");
+  typeName = ToQStr(l.type);
 
   QList<RDTreeWidgetItem *> children;
 
@@ -3852,16 +4096,31 @@ RDTreeWidgetItem *ShaderViewer::makeSourceVariableNode(const SourceVariableMappi
               regNames += QFormatStr("%1.%2").arg(r.name).arg(xyzw[r.component % 4]);
           }
 
-          if(l.type == VarType::UInt)
-            value += Formatter::Format(reg->value.u32v[r.component]);
-          else if(l.type == VarType::SInt)
-            value += Formatter::Format(reg->value.s32v[r.component]);
-          else if(l.type == VarType::Bool)
-            value += Formatter::Format(reg->value.u32v[r.component] ? true : false);
-          else if(l.type == VarType::Float)
-            value += Formatter::Format(reg->value.f32v[r.component]);
-          else if(l.type == VarType::Double)
-            value += Formatter::Format(reg->value.f64v[r.component]);
+          switch(l.type)
+          {
+            case VarType::Float: value += Formatter::Format(reg->value.f32v[r.component]); break;
+            case VarType::Double: value += Formatter::Format(reg->value.f64v[r.component]); break;
+            case VarType::Half: value += Formatter::Format(reg->value.f16v[r.component]); break;
+            case VarType::Bool:
+              value += Formatter::Format(reg->value.u32v[r.component] ? true : false);
+              break;
+            case VarType::ULong: value += Formatter::Format(reg->value.u64v[r.component]); break;
+            case VarType::UInt: value += Formatter::Format(reg->value.u32v[r.component]); break;
+            case VarType::UShort: value += Formatter::Format(reg->value.u16v[r.component]); break;
+            case VarType::UByte: value += Formatter::Format(reg->value.u8v[r.component]); break;
+            case VarType::SLong: value += Formatter::Format(reg->value.s64v[r.component]); break;
+            case VarType::SInt: value += Formatter::Format(reg->value.s32v[r.component]); break;
+            case VarType::SShort: value += Formatter::Format(reg->value.s16v[r.component]); break;
+            case VarType::SByte: value += Formatter::Format(reg->value.s8v[r.component]); break;
+            case VarType::GPUPointer: value += ToQStr(reg->GetPointer()); break;
+            case VarType::ConstantBlock:
+            case VarType::ReadOnlyResource:
+            case VarType::ReadWriteResource:
+            case VarType::Sampler: value += stringRep(*reg, 0); break;
+            case VarType::Unknown:
+              qCritical() << "Unexpected unknown variable" << (QString)l.name;
+              break;
+          }
         }
         else
         {

@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2019-2021 Baldur Karlsson
+ * Copyright (c) 2019-2022 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -2095,6 +2095,8 @@ bool WrappedVulkan::Serialise_vkCreateImage(SerialiserType &ser, VkDevice device
       ResourceId live = GetResourceManager()->WrapResource(Unwrap(device), img);
       GetResourceManager()->AddLiveResource(Image, img);
 
+      NameVulkanObject(img, StringFormat::Fmt("Image %s", ToStr(Image).c_str()));
+
       m_CreationInfo.m_Image[live].Init(GetResourceManager(), m_CreationInfo, &CreateInfo);
 
       bool inserted = false;
@@ -2141,6 +2143,8 @@ bool WrappedVulkan::Serialise_vkCreateImage(SerialiserType &ser, VkDevice device
         prefix = "2D " + depth + " Attachment";
       else if(CreateInfo.usage & VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT)
         prefix = "2D Fragment Density Map Attachment";
+      else if(CreateInfo.usage & VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR)
+        prefix = "2D Fragment Shading Rate Attachment";
     }
     else if(CreateInfo.imageType == VK_IMAGE_TYPE_3D)
     {
